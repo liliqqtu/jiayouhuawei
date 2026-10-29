@@ -115,12 +115,12 @@ typedef struct {
 
 // 1. 无线路由器或手机热点 SSID 与密码 (2.4GHz)
 // 硬件接独立电源（充电宝/电源适配器）时，通过 Wi-Fi 自动联网
-#define CFG_WIFI_SSID               "test-wifi"
-#define CFG_WIFI_PASSWORD           "12345678"
+#define CFG_WIFI_SSID               "xin Pro"
+#define CFG_WIFI_PASSWORD           "kdxbryvq35uxd4r"
 
 // 2. 守夜人网关目标 IP 与 UDP 端口
 // 可配置为具体网关主机 IP，或局域网受限广播 "255.255.255.255"
-#define CFG_GATEWAY_IP              "10.202.41.10"
+#define CFG_GATEWAY_IP              "10.179.139.87"
 #define CFG_UDP_PORT                9999
 
 // 3. 边缘计算断网环形缓存深度（条数）与单条最大字节

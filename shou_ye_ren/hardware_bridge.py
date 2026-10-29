@@ -6,11 +6,19 @@
 """
 
 import sys
+import os
 import time
 import json
 import socket
 from datetime import datetime, timezone, timedelta
 from urllib import request, error
+
+# 禁用所有代理，确保本机回环与局域网直连不走代理（防止 502 Bad Gateway）
+os.environ["HTTP_PROXY"] = ""
+os.environ["HTTPS_PROXY"] = ""
+os.environ["NO_PROXY"] = "*"
+os.environ["no_proxy"] = "*"
+request.install_opener(request.build_opener(request.ProxyHandler({})))
 
 # 保证无论在 pythonw 无窗口后台 还是 CMD 窗口下都不崩溃
 if sys.stdout is None:
@@ -99,10 +107,15 @@ def find_bearpi_port():
     return None
 
 def main():
-    print("=" * 65)
-    print("  独居老人居家安全系统 · 小熊派硬件 -> 手机端实时数据桥接器")
-    print(f"  目标网关: {GATEWAY_URL}")
-    print("=" * 65)
+    print("=" * 68)
+    print("  独居老人居家安全系统 · 硬件数据中枢与双模通信守护")
+    print("=" * 68)
+    print("  【供电与传输模式说明】:")
+    print("   1. 充电宝独立供电: 硬件通过无线 Wi-Fi 直连电脑 (UDP:9999)")
+    print("      -> 本窗口无需任何操作，可直接最小化，网关后台已在实时监听！")
+    print("   2. USB 数据线模式: 硬件插在电脑 USB 口上时，自动通过 COM 串口接收。")
+    print("   【纯真实硬件保障】: 已彻底清空并禁用任何模拟数据，只采真实硬件！")
+    print("=" * 68)
 
     target_port = find_bearpi_port()
     ser = None
@@ -110,11 +123,11 @@ def main():
         try:
             import serial
             ser = serial.Serial(target_port, 115200, timeout=0.8)
-            print(f"[成功] 连接小熊派开发板串口: {target_port} (波特率 115200)")
+            print(f"[有线模式就绪] 检测到小熊派 USB 串口: {target_port} (波特率 115200)")
         except Exception as e:
             print(f"[提示] 打开串口 {target_port} 异常: {e}")
     else:
-        print("[提示] 未检测到小熊派 USB 串口 (CH340)，进入自动扫描与守护模式...")
+        print("[独立供电模式] 未插电脑 USB 串口，系统自动进入 Wi-Fi UDP 接收守护状态...")
 
     seq = 0
     temp = 24.5
@@ -138,47 +151,53 @@ def main():
                 except Exception:
                     ser = None
 
-        # 若无串口连接，检测小熊派是否正在通过无线 Wi-Fi (UDP 9999) 独立供电上报
+        # 若无串口连接：检查是否有 Wi-Fi 硬件数据；若两者都没有，静默等待真实硬件，绝不生成任何模拟数据
         if ser is None:
             latest = get_latest_snapshot()
-            if latest and latest.get("source") == "hardware":
-                tag = "[无线 Wi-Fi 模式]"
+            if latest and latest.get("source") == "hardware" and latest.get("online") is True and (latest.get("staleSeconds") or 999) < 10:
+                tag = "[真实硬件 Wi-Fi 模式]"
                 alarms = latest.get("alarms") or []
                 alarm_str = f" [告警: {', '.join(alarms)}]" if alarms else ""
                 print(f"[{iso_now()}] {tag} 接收到小熊派无线数据 (UDP:9999): 温度={latest.get('temperature')}℃, 门磁={'开门' if latest.get('doorOpen') else '关闭'}, 人体={'有人' if latest.get('pirDetected') else '静止'}{alarm_str}")
-                time.sleep(1)
-                continue
+            time.sleep(1.5)
+            continue
 
         # 从串口读取数据
-        if ser:
-            try:
-                line = ser.readline().decode("utf-8", "ignore").strip()
-                if line.startswith("{") and line.endswith("}"):
-                    data = json.loads(line)
-                    if data.get("type") == "telemetry":
-                        pir = bool(data.get("motion", 0))
-                        door = bool(data.get("door", 0))
-                        temp = float(data.get("temp", temp))
-                        humi = float(data.get("humi", humi))
-                        sos_val = int(data.get("sos", 0))
+        has_new_hardware_frame = False
+        try:
+            line = ser.readline().decode("utf-8", "ignore").strip()
+            if line.startswith("{") and line.endswith("}"):
+                data = json.loads(line)
+                if data.get("type") == "telemetry":
+                    has_new_hardware_frame = True
+                    pir = bool(data.get("motion", 0))
+                    door = bool(data.get("door", 0))
+                    temp = float(data.get("temp", temp))
+                    humi = float(data.get("humi", humi))
+                    sos_val = int(data.get("sos", 0))
+                    
+                    if pir:
+                        last_motion_ts = iso_now()
                         
-                        if pir:
-                            last_motion_ts = iso_now()
-                            
-                        # SOS 按键边缘触发（按下时上报）
-                        if sos_val == 1 and last_sos_state == 0:
-                            post_event("SOS", {"zone": "living", "trigger": "f1_key"})
-                            print(">>> [SOS 紧急求助] 检测到小熊派板载按键按下！已上报手机端！ <<<")
-                        last_sos_state = sos_val
-            except Exception as e:
-                print(f"[提示] 串口通讯暂断，自动重连中... ({e})")
-                try:
-                    ser.close()
-                except Exception:
-                    pass
-                ser = None
+                    # SOS 按键边缘触发（按下时上报）
+                    if sos_val == 1 and last_sos_state == 0:
+                        post_event("SOS", {"zone": "living", "trigger": "f1_key"})
+                        print(">>> [SOS 紧急求助] 检测到小熊派板载按键按下！已上报手机端！ <<<")
+                    last_sos_state = sos_val
+        except Exception as e:
+            print(f"[提示] 串口通讯暂断，自动重连中... ({e})")
+            try:
+                ser.close()
+            except Exception:
+                pass
+            ser = None
+            continue
 
-        # 封装为网关标准 snapshot 结构
+        if not has_new_hardware_frame:
+            time.sleep(0.05)
+            continue
+
+        # 封装为网关标准 snapshot 结构（仅真实硬件）
         payload = {
             "deviceId": DEVICE_ID,
             "ts": iso_now(),
@@ -194,7 +213,7 @@ def main():
             "powerState": "mains",
             "rssi": -48,
             "online": True,
-            "source": "hardware" if ser else "simulation",
+            "source": "hardware",
             "fwVersion": "bearpi-1.0.0"
         }
 
@@ -202,10 +221,10 @@ def main():
         if res:
             alarms = res.get("alarms", [])
             alarm_str = f" [告警: {', '.join(alarms)}]" if alarms else ""
-            tag = "[真实硬件 COM7]" if ser else "[智能模拟]"
+            tag = "[真实硬件 串口 COM 模式]"
             print(f"[{iso_now()}] {tag} 帧#{seq} 同步成功: 温度={temp:.1f}℃, 门磁={'开门' if door else '关闭'}, 人体={'有人' if pir else '静止'}{alarm_str}")
 
-        time.sleep(1)
+        time.sleep(0.5)
 
 if __name__ == "__main__":
     main()

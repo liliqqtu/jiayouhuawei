@@ -21,16 +21,20 @@ echo.
 echo ==========================================================
 echo   服务已全部就绪！
 echo.
+echo   【当前电脑局域网 IP】
+echo     http://10.179.139.87:8780
+echo.
 echo   【硬件供电与组网模式】
 echo     - 独立供电模式: 小熊派插充电宝/电源头，Wi-Fi 自动上报 UDP:9999
 echo     - USB 有线模式: 小熊派插电脑 USB，桥接器自动识别 CH340 串口
 echo.
 echo   【手机/虚拟机 APP 配置】
-echo     请在 APP「我的」页面中填入本机局域网网关地址：
-echo     http://10.202.41.10:8780
+echo     请在虚拟手机/真机 APP「我的」页面中填入网关地址：
+echo     http://10.179.139.87:8780
+echo     并点击「保存并测试连接」按钮！
 echo.
 echo   【浏览器大屏直接访问】
-echo     http://10.202.41.10:8780/
+echo     http://10.179.139.87:8780/
 echo ==========================================================
 echo.
 pause
@@ -39,4 +43,4 @@ pause
 with open(r"D:\Dream\shou_ye_ren\start_all.bat", "w", encoding="gbk", errors="replace") as f:
     f.write(bat_content)
 
-print("start_all.bat generated successfully in GBK!")
+print("start_all.bat updated for 10.179.139.87")

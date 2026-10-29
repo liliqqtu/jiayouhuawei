@@ -13,7 +13,7 @@ import { AlarmEvent, AlarmListResult, DailyReport, DeviceAddResult, DeviceListRe
 
 const PREF_NAME: string = 'shadowlamp';
 const KEY_BASE: string = 'baseUrl';
-export const DEFAULT_BASE: string = 'http://192.168.1.100:8780';
+export const DEFAULT_BASE: string = 'http://10.179.139.87:8780';
 /** 默认家人电话（演示用；真机部署时在「我的」页或本常量里改成真实号码） */
 export const DEFAULT_FAMILY_PHONE: string = '13800138000';
 

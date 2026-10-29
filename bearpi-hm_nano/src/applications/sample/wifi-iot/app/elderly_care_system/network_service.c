@@ -19,7 +19,7 @@
 #include "elderly_care_config.h"
 #include "network_service.h"
 
-#define NET_TASK_STACK_SIZE     (1024 * 4)
+#define NET_TASK_STACK_SIZE     (1024 * 8)
 #define NET_TASK_PRIORITY       osPriorityNormal
 
 static volatile int g_wifi_connected = 0;
@@ -36,11 +36,11 @@ static void OnWifiConnectionChanged(int state, WifiLinkedInfo *info)
     (void)info;
     if (state == WIFI_STATE_AVALIABLE) {
         g_wifi_connected = 1;
-        printf("[NETWORK] Wi-Fi link AP available\n");
+        printf("[WIFI_EVENT] State -> WIFI_STATE_AVALIABLE (Connected to AP!)\n");
     } else {
         g_wifi_connected = 0;
         g_network_ready = 0;
-        printf("[NETWORK] Wi-Fi link disconnected (state=%d)\n", state);
+        printf("[WIFI_EVENT] State -> Disconnected (state=%d)\n", state);
     }
 }
 
@@ -58,7 +58,7 @@ static WifiEvent g_wifi_event = {
     .OnHotspotStaLeave = NULL
 };
 
-// 发送单个 UDP 数据包到网关
+// 发送单个 UDP 数据包到网关（单播指定 IP + 广播 255.255.255.255 双重保活）
 static int SendUdpPacket(const char *data)
 {
     if (data == NULL || strlen(data) == 0) {
@@ -74,14 +74,24 @@ static int SendUdpPacket(const char *data)
     int broadcast = 1;
     setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast));
 
+    int len = (int)strlen(data);
+
+    // 1. 单播给配置的网关目标 IP
     struct sockaddr_in dest;
     memset(&dest, 0, sizeof(dest));
     dest.sin_family = AF_INET;
     dest.sin_port = htons(CFG_UDP_PORT);
     dest.sin_addr.s_addr = inet_addr(CFG_GATEWAY_IP);
-
-    int len = (int)strlen(data);
     int sent = sendto(sock, data, len, 0, (struct sockaddr *)&dest, sizeof(dest));
+
+    // 2. 局域网全网受限广播（防电脑换热点后 IP 漂移）
+    struct sockaddr_in bcast;
+    memset(&bcast, 0, sizeof(bcast));
+    bcast.sin_family = AF_INET;
+    bcast.sin_port = htons(CFG_UDP_PORT);
+    bcast.sin_addr.s_addr = inet_addr("255.255.255.255");
+    sendto(sock, data, len, 0, (struct sockaddr *)&bcast, sizeof(bcast));
+
     lwip_close(sock);
 
     if (sent != len) {
@@ -202,6 +212,7 @@ static void NetworkTask(void *arg)
 
     RegisterWifiEvent(&g_wifi_event);
     EnableWifi();
+    osDelay(30); // 等待 300ms 确保底层 Wi-Fi 芯片就绪
 
     WifiDeviceConfig apConfig;
     memset(&apConfig, 0, sizeof(apConfig));
@@ -210,12 +221,17 @@ static void NetworkTask(void *arg)
     apConfig.securityType = WIFI_SEC_TYPE_PSK;
 
     int netId = -1;
-    AddDeviceConfig(&apConfig, &netId);
+    WifiErrorCode addErr = AddDeviceConfig(&apConfig, &netId);
+    printf("[NETWORK] AddDeviceConfig ret=%d, netId=%d\n", addErr, netId);
 
     while (1) {
         if (!g_wifi_connected) {
             g_network_ready = 0;
-            printf("[NETWORK] Attempting to connect to Wi-Fi AP '%s'...\n", CFG_WIFI_SSID);
+            if (netId < 0) {
+                AddDeviceConfig(&apConfig, &netId);
+                printf("[NETWORK] Re-adding AP config, netId=%d\n", netId);
+            }
+            printf("[NETWORK] Attempting to connect to Wi-Fi AP '%s' (netId=%d)...\n", CFG_WIFI_SSID, netId);
             ConnectTo(netId);
 
             // 等待 AP 连接握手（最多等待 10 秒）
@@ -229,6 +245,7 @@ static void NetworkTask(void *arg)
                 if (g_iface != NULL) {
                     netifapi_dhcp_start(g_iface);
                     osDelay(150); // 等待 1.5 秒完成 DHCP 分配
+                    netifapi_netif_common(g_iface, dhcp_clients_info_show, NULL);
 
                     printf("[NETWORK] DHCP Success! Board IP: %s\n", ip4addr_ntoa(netif_ip4_addr(g_iface)));
                     printf("[NETWORK] Ready for Untethered Independent Power Operation!\n");
