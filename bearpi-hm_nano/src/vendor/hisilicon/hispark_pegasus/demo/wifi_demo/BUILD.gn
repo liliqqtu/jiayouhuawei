@@ -1,0 +1,17 @@
+static_library("wifi_control") {
+    sources = [
+        #"wifi_connecter.c",
+        "wifi_starter.c",
+        #"wifi_connect_demo.c",
+        "wifi_hotspot_demo.c",
+    ]
+
+    include_dirs = [
+        "./",
+        "//utils/native/lite/include",
+        "//kernel/liteos_m/kal/cmsis",
+        "//base/iot_hardware/peripheral/interfaces/kits",
+        "//foundation/communication/wifi_lite/interfaces/wifiservice",
+        "//vendor/hisi/hi3861/hi3861/third_party/lwip_sack/include",
+    ]
+}

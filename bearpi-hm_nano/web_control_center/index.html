@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>独居老人居家安全监测与应急辅助系统 - OpenHarmony 控制中心</title>
+  <!-- Chart.js CDN 用于数据分析与趋势图表 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg-color: #0b111e;
+      --card-bg: #151e32;
+      --card-border: #23314e;
+      --primary: #007dff;
+      --primary-hover: #0a84ff;
+      --success: #00c853;
+      --warning: #ffab00;
+      --danger: #ff3b30;
+      --text-main: #f0f4f8;
+      --text-sub: #8da4be;
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "HarmonyOS Sans", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: linear-gradient(90deg, #10192c 0%, #172642 100%);
+      padding: 16px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #007dff 0%, #00d2ff 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 20px;
+      color: #fff;
+    }
+    .brand-title h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .brand-title p {
+      font-size: 12px;
+      color: var(--text-sub);
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      background: rgba(0, 200, 83, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(0, 200, 83, 0.3);
+    }
+    .status-badge.alerting {
+      background: rgba(255, 59, 48, 0.2);
+      color: var(--danger);
+      border-color: rgba(255, 59, 48, 0.5);
+      animation: pulse-danger 1s infinite;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: currentColor;
+    }
+
+    @keyframes pulse-danger {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.8; }
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: none;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-outline { background: transparent; border: 1px solid var(--card-border); color: var(--text-main); }
+    .btn-outline:hover { background: rgba(255,255,255,0.05); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { opacity: 0.9; }
+
+    main {
+      flex: 1;
+      padding: 24px 28px;
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+      max-width: 1600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 实时仪表盘栅格 */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .metric-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+    .metric-card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; width: 4px; height: 100%;
+      background: var(--primary);
+    }
+    .metric-card.warning::before { background: var(--warning); }
+    .metric-card.danger::before { background: var(--danger); }
+    .metric-label { font-size: 13px; color: var(--text-sub); }
+    .metric-value { font-size: 26px; font-weight: 800; font-family: monospace; }
+    .metric-sub { font-size: 12px; color: var(--text-sub); }
+
+    /* 提示条横幅 */
+    .notice-banner {
+      background: rgba(0, 125, 255, 0.1);
+      border: 1px solid rgba(0, 125, 255, 0.25);
+      padding: 12px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    /* 快捷场景模拟器控制台 */
+    .scenario-panel {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    /* 闭环事件流 */
+    .event-log-container {
+      max-height: 480px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .event-item {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      border-left: 3px solid var(--primary);
+    }
+    .event-item.critical { border-left-color: var(--danger); background: rgba(255,59,48,0.05); }
+    .event-item.warning { border-left-color: var(--warning); background: rgba(255,171,0,0.05); }
+    .event-meta {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-sub);
+      font-size: 11px;
+    }
+    .event-desc { font-weight: 600; }
+    .event-action {
+      margin-top: 4px;
+      align-self: flex-end;
+    }
+
+    /* 弹窗 Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-content {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      width: 90%;
+      max-width: 540px;
+      padding: 24px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-group label { font-size: 13px; color: var(--text-sub); }
+    .form-control {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--card-border);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .form-control:focus { outline: none; border-color: var(--primary); }
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    /* 图表区域 */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .chart-box {
+      height: 220px;
+      position: relative;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">鸿</div>
+      <div class="brand-title">
+        <h1>独居老人居家安全监测与应急辅助系统</h1>
+        <p>OpenHarmony 架构 · 软硬件南北向一体化健康守护平台</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div id="statusBadge" class="status-badge">
+        <span class="status-dot"></span>
+        <span id="statusText">系统监控运行正常</span>
+      </div>
+      <button id="btnSerialConnect" class="btn btn-primary" onclick="connectSerial()">
+        🔌 连接小熊派串口 (CH340/COM口)
+      </button>
+      <button class="btn btn-outline" onclick="openHelpModal()">
+        ❓ 找不到端口/线材说明
+      </button>
+      <button class="btn btn-danger" onclick="triggerSosScenario()">
+        🆘 紧急求助测试
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- 左侧主监控区 -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      
+      <!-- 端口与数据流提示条 -->
+      <div class="notice-banner">
+        <div>
+          ℹ️ <strong>串口连接提示：</strong> Windows 系统中数据线/开发板显示的名称统一为 <strong>USB-SERIAL CH340 (COMx)</strong>。点击上方蓝色按钮即可选择连接；即便不插硬件，也可点击下方按钮实时模拟各项突发场景。
+        </div>
+        <button class="btn btn-outline" style="padding: 4px 10px; font-size: 12px;" onclick="openHelpModal()">
+          排查指南
+        </button>
+      </div>
+
+      <!-- 实时遥测指标栅格 -->
+      <div class="dashboard-grid">
+        <div id="cardMotion" class="metric-card">
+          <span class="metric-label">人体活动感应 (PIR)</span>
+          <span id="valMotion" class="metric-value">正常</span>
+          <span id="subMotion" class="metric-sub">距上次活动: 0 秒</span>
+        </div>
+        <div id="cardDoor" class="metric-card">
+          <span class="metric-label">门窗磁状态 (干簧管)</span>
+          <span id="valDoor" class="metric-value">闭合安全</span>
+          <span id="subDoor" class="metric-sub">持续闭合良好</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">室内温湿度 (SHT30)</span>
+          <span id="valEnv" class="metric-value">24.5℃</span>
+          <span id="subEnv" class="metric-sub">湿度: 53.0%RH (舒适)</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">今日活动累计 (次)</span>
+          <span id="valCount" class="metric-value">42</span>
+          <span id="subCount" class="metric-sub">较昨日规律下降 5%</span>
+        </div>
+      </div>
+
+      <!-- 快速演示场景注入器 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🎛️ 答辩演示 · 传感器场景即时注入</div>
+          <span style="font-size: 12px; color: var(--text-sub);">点击即可触发各传感器异常，全方位检验声光与闭环系统</span>
+        </div>
+        <div class="scenario-panel">
+          <button class="btn btn-outline" onclick="triggerMotionScenario()">🚶‍♂️ 有人活动 (重置倒计时)</button>
+          <button class="btn btn-outline" onclick="toggleDoorScenario()">🚪 切换门窗开闭状态</button>
+          <button class="btn btn-outline" onclick="triggerDoorTimeoutScenario()">⚠️ 模拟门窗长开未关 (15s)</button>
+          <button class="btn btn-outline" onclick="triggerFallScenario()">🚨 模拟老人长时间未活动 (跌倒疑虑)</button>
+          <button class="btn btn-outline" onclick="triggerFireScenario()">🔥 模拟室内高温火险 (39.5℃)</button>
+          <button class="btn btn-outline" onclick="resetToNormal()">🔄 恢复全部安全正常</button>
+        </div>
+      </div>
+
+      <!-- 统计分析与规律看板 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📊 老人日常生活规律与健康行为分析</div>
+          <span style="font-size: 12px; color: var(--text-sub);">依据 OpenHarmony 传感器历史特征统计生成</span>
+        </div>
+        <div class="charts-row">
+          <div>
+            <p style="font-size: 12px; color: var(--text-sub); margin-bottom: 6px;">24小时日常活动活跃时段分布 (次/时)</p>
+            <div class="chart-box"><canvas id="hourlyChart"></canvas></div>
+          </div>
+          <div>
+            <p style="font-size: 12px; color: var(--text-sub); margin-bottom: 6px;">近7日活动频次与规律趋势分析</p>
+            <div class="chart-box"><canvas id="weeklyChart"></canvas></div>
+          </div>
+        </div>
+        <div style="margin-top: 14px; padding: 10px 14px; background: rgba(0,125,255,0.08); border-radius: 8px; font-size: 13px; color: #a3c9ff;">
+          💡 <strong>健康规律智能评估：</strong> 老人日间（07:00~19:00）活动分布均衡，清晨与傍晚为活动高峰期。今日总活动量为 42 次，生理健康状态评定为【优】。
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 右侧：事件闭环台账管理 -->
+    <div class="card" style="display: flex; flex-direction: column;">
+      <div class="card-header">
+        <div class="card-title">📋 居家安全事件闭环管理台账</div>
+        <span style="font-size: 12px; color: var(--text-sub); cursor: pointer;" onclick="exportLog()">📥 导出台账</span>
+      </div>
+      <p style="font-size: 12px; color: var(--text-sub); margin-bottom: 12px;">
+        发生预警后，家属/社区网格员需及时确认并录入处置结果，形成闭环电子档案。
+      </p>
+      <div id="eventLog" class="event-log-container">
+        <!-- 动态生成事件 -->
+      </div>
+    </div>
+  </main>
+
+  <!-- 端口排查说明弹窗 -->
+  <div id="helpModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 style="font-size: 16px; color: var(--primary);">🔌 数据线与端口选择说明</h3>
+        <span style="cursor: pointer; font-size: 20px;" onclick="closeHelpModal()">×</span>
+      </div>
+      <div style="font-size: 13px; line-height: 1.7; color: var(--text-main);">
+        <p><strong>1. 为什么选项里没有“CM7”？</strong><br>
+        “CM7”是数据线的品牌型号（如绿联/品胜线材），而 Windows 操作系统中所有外接硬件的通信通道统一以 <strong>COM 端口</strong> 命名（如 COM3, COM4, COM7 等），设备名称一般显示为 <strong>USB-SERIAL CH340 (COMx)</strong>。</p>
+        <br>
+        <p><strong>2. 弹出的窗口里找不到小熊派开发板？</strong><br>
+        • <strong>请确认是否为“纯充电线”</strong>：很多手机充电线内部只有供电线，没有数据线芯。如果电脑发出叮咚声但提示“未知 USB 设备”，说明该线无法传数据，请更换一条支持数据传输的 Type-C 线。<br>
+        • <strong>检查是否安装 CH340 驱动</strong>：小熊派主板使用 CH340 芯片，若未安装驱动电脑不会分配端口。驱动安装包在：<br>
+        <code>D:\DevEco\resources\toolset\DevTools_Hi3861V100\1.0.0\usb_serial_driver\CH341SER.EXE</code></p>
+        <br>
+        <p><strong>3. 如果不想折腾接线，如何录制视频或答辩？</strong><br>
+        系统已内置<strong>【全真交互模拟器】</strong>，直接点击页面上的“有人活动”、“切换门窗”、“模拟跌倒”等按钮，声光告警、闭环工单、健康图表全流程功能一应俱全！</p>
+      </div>
+      <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+        <button class="btn btn-primary" onclick="closeHelpModal()">我知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 事件处置录入弹窗 -->
+  <div id="closureModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalEventTitle" style="font-size: 16px; color: var(--danger);">⚠️ 紧急预警处置录入</h3>
+        <span style="cursor: pointer; font-size: 20px;" onclick="closeModal()">×</span>
+      </div>
+      <div class="form-group">
+        <label>发生时间与事件源</label>
+        <input id="modalEventTime" type="text" class="form-control" readonly>
+      </div>
+      <div class="form-group">
+        <label>现场排查与处置结论 (赛题闭环管理要求)</label>
+        <div class="radio-group">
+          <label class="radio-option">
+            <input type="radio" name="conclusion" value="已联系社区网格员上门核实，老人身体一切正常" checked>
+            已联系社区网格员上门核实，老人平安
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="conclusion" value="子女已完成电话视频确认，系传感器误碰触发">
+            子女已电话确认，系误碰/误触
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="conclusion" value="门窗已由家属远程提醒老人关严锁定">
+            门窗已提醒老人关严
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="conclusion" value="突发身体不适，网格员已协同医护人员送医就诊">
+            突发意外已协同送诊
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>处置人 / 备注说明</label>
+        <input id="modalHandler" type="text" class="form-control" value="网格员-李华 (工号: 410105)">
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+        <button class="btn btn-outline" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitClosure()">确认归档并消警</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 系统状态模型
+    let state = {
+      motionActive: 0,
+      secondsSinceLastMotion: 0,
+      motionCountToday: 42,
+      doorOpen: 0,
+      doorOpenDurationSec: 0,
+      temperature: 24.5,
+      humidity: 53.0,
+      sosActive: 0,
+      currentAlert: 0,
+      currentLevel: 0
+    };
+
+    let events = [
+      { id: 1, time: "2026-10-28 17:30:15", type: "INFO", desc: "老人晚间开门散步归来，门窗自动闭合", status: "已自动归档", handler: "系统自动" },
+      { id: 2, time: "2026-10-28 12:15:00", type: "INFO", desc: "厨房温湿度适中 (24.8℃, 52%RH)，午休活跃度正常", status: "已自动归档", handler: "系统自动" }
+    ];
+
+    let currentPendingEvent = null;
+
+    // 定时器模拟自然运行
+    setInterval(() => {
+      state.secondsSinceLastMotion++;
+      if (state.doorOpen) state.doorOpenDurationSec++;
+
+      if (state.secondsSinceLastMotion >= 30 && state.currentAlert === 0) {
+        setAlert(2, 3, "红外感应超时 30 秒无移动 (疑似老人跌倒或昏迷)");
+      }
+      if (state.doorOpenDurationSec >= 15 && state.currentAlert === 0) {
+        setAlert(3, 2, "大门长时间未关严 (已超过 15 秒)");
+      }
+
+      updateUI();
+    }, 1000);
+
+    function updateUI() {
+      // 人体活动
+      const cardMotion = document.getElementById("cardMotion");
+      const valMotion = document.getElementById("valMotion");
+      const subMotion = document.getElementById("subMotion");
+      subMotion.innerText = `距上次活动: ${state.secondsSinceLastMotion} 秒`;
+      if (state.secondsSinceLastMotion >= 30) {
+        cardMotion.className = "metric-card danger";
+        valMotion.innerText = "异常静止!";
+      } else {
+        cardMotion.className = "metric-card";
+        valMotion.innerText = state.motionActive ? "正在移动" : "处于静止";
+      }
+
+      // 门窗状态
+      const cardDoor = document.getElementById("cardDoor");
+      const valDoor = document.getElementById("valDoor");
+      const subDoor = document.getElementById("subDoor");
+      if (state.doorOpen) {
+        cardDoor.className = state.doorOpenDurationSec >= 15 ? "metric-card danger" : "metric-card warning";
+        valDoor.innerText = `打开 (${state.doorOpenDurationSec}s)`;
+        subDoor.innerText = state.doorOpenDurationSec >= 15 ? "超时未关门告警!" : "门窗开启中";
+      } else {
+        cardDoor.className = "metric-card";
+        valDoor.innerText = "闭合安全";
+        subDoor.innerText = "磁吸严密闭合";
+      }
+
+      // 温湿度
+      document.getElementById("valEnv").innerText = `${state.temperature.toFixed(1)}℃`;
+      document.getElementById("subEnv").innerText = `湿度: ${state.humidity.toFixed(1)}%RH (舒适)`;
+
+      // 活动次数
+      document.getElementById("valCount").innerText = state.motionCountToday;
+
+      // 顶部告警状态条
+      const statusBadge = document.getElementById("statusBadge");
+      const statusText = document.getElementById("statusText");
+      if (state.currentLevel === 3) {
+        statusBadge.className = "status-badge alerting";
+        statusText.innerText = `🚨 严重紧急告警中: ${getAlertTypeName(state.currentAlert)}`;
+      } else if (state.currentLevel === 2) {
+        statusBadge.className = "status-badge alerting";
+        statusText.innerText = `⚠️ 一般预警中: ${getAlertTypeName(state.currentAlert)}`;
+      } else {
+        statusBadge.className = "status-badge";
+        statusText.innerText = "系统监控运行正常 (绿色安全)";
+      }
+    }
+
+    function getAlertTypeName(type) {
+      if (type === 1) return "老人按下随身紧急求助按键 (SOS)";
+      if (type === 2) return "长时间无移动 / 跌倒昏迷隐患";
+      if (type === 3) return "门窗长开未关异常";
+      if (type === 4) return "室内突发高温 (疑似火险)";
+      return "未知告警";
+    }
+
+    function setAlert(alertType, level, desc) {
+      state.currentAlert = alertType;
+      state.currentLevel = level;
+      const nowStr = new Date().toLocaleTimeString();
+      const newEvt = {
+        id: Date.now(),
+        time: nowStr,
+        type: level === 3 ? "CRITICAL" : "WARNING",
+        desc: desc,
+        status: "待网格员/家属闭环处置",
+        handler: "未处置"
+      };
+      events.unshift(newEvt);
+      renderEvents();
+      openClosureModal(newEvt);
+    }
+
+    function renderEvents() {
+      const container = document.getElementById("eventLog");
+      container.innerHTML = "";
+      events.forEach(e => {
+        const item = document.createElement("div");
+        item.className = `event-item ${e.type === "CRITICAL" ? "critical" : (e.type === "WARNING" ? "warning" : "")}`;
+        item.innerHTML = `
+          <div class="event-meta">
+            <span>⏰ ${e.time}</span>
+            <span style="font-weight:700; color:${e.status.includes('待') ? 'var(--danger)' : 'var(--success)'};">${e.status}</span>
+          </div>
+          <div class="event-desc">${e.desc}</div>
+          <div style="font-size:11px; color:var(--text-sub);">处置人: ${e.handler}</div>
+          ${e.status.includes('待') ? `<button class="btn btn-primary event-action" onclick="openClosureModalById(${e.id})">立即处置确认</button>` : ''}
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function openClosureModal(evt) {
+      currentPendingEvent = evt;
+      document.getElementById("modalEventTitle").innerText = `⚠️ 闭环处理: ${evt.desc}`;
+      document.getElementById("modalEventTime").value = `${evt.time} [${evt.type}]`;
+      document.getElementById("closureModal").classList.add("active");
+    }
+
+    function openClosureModalById(id) {
+      const target = events.find(x => x.id === id);
+      if (target) openClosureModal(target);
+    }
+
+    function closeModal() {
+      document.getElementById("closureModal").classList.remove("active");
+    }
+
+    function openHelpModal() {
+      document.getElementById("helpModal").classList.add("active");
+    }
+
+    function closeHelpModal() {
+      document.getElementById("helpModal").classList.remove("active");
+    }
+
+    function submitClosure() {
+      if (currentPendingEvent) {
+        const conclusion = document.querySelector('input[name="conclusion"]:checked').value;
+        const handler = document.getElementById("modalHandler").value;
+        currentPendingEvent.status = `已闭环: ${conclusion}`;
+        currentPendingEvent.handler = handler;
+        renderEvents();
+      }
+      closeModal();
+      resetToNormal();
+    }
+
+    // 快捷模拟触发
+    function triggerMotionScenario() {
+      state.motionActive = 1;
+      state.secondsSinceLastMotion = 0;
+      state.motionCountToday++;
+      setTimeout(() => { state.motionActive = 0; updateUI(); }, 2000);
+      updateUI();
+    }
+
+    function toggleDoorScenario() {
+      state.doorOpen = state.doorOpen ? 0 : 1;
+      state.doorOpenDurationSec = 0;
+      updateUI();
+    }
+
+    function triggerDoorTimeoutScenario() {
+      state.doorOpen = 1;
+      state.doorOpenDurationSec = 16;
+      setAlert(3, 2, "大门开启已超过 15 秒未关严，触发预警！");
+      updateUI();
+    }
+
+    function triggerFallScenario() {
+      state.secondsSinceLastMotion = 35;
+      setAlert(2, 3, "红外感应已超过 30 秒未检测到老人活动 (疑似突发疾病跌倒)！");
+      updateUI();
+    }
+
+    function triggerSosScenario() {
+      state.sosActive = 1;
+      setAlert(1, 3, "老人主动按下随身紧急求助按钮 (F1/SOS)！现场声光拉响！");
+      updateUI();
+    }
+
+    function triggerFireScenario() {
+      state.temperature = 39.5;
+      setAlert(4, 3, "室内温度急剧升高至 39.5℃，触发突发火险严重告警！");
+      updateUI();
+    }
+
+    function resetToNormal() {
+      state.sosActive = 0;
+      state.currentAlert = 0;
+      state.currentLevel = 0;
+      state.secondsSinceLastMotion = 0;
+      state.doorOpen = 0;
+      state.doorOpenDurationSec = 0;
+      state.temperature = 24.5;
+      updateUI();
+    }
+
+    function exportLog() {
+      let csv = "时间,事件级别,事件详情,处置状态,处置人\n";
+      events.forEach(e => {
+        csv += `"${e.time}","${e.type}","${e.desc}","${e.status}","${e.handler}"\n`;
+      });
+      const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `独居老人居家安全闭环台账_${Date.now()}.csv`;
+      link.click();
+    }
+
+    // Web Serial 硬件连接
+    async function connectSerial() {
+      if (!("serial" in navigator)) {
+        alert("当前浏览器不支持 Web Serial API，请使用 Chrome 或 Edge 浏览器连接串口，或使用页面上的快捷场景模拟！");
+        return;
+      }
+      try {
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+        document.getElementById("btnSerialConnect").innerText = "✅ 小熊派串口已连接";
+        document.getElementById("btnSerialConnect").style.background = "var(--success)";
+
+        const textDecoder = new TextDecoderStream();
+        port.readable.pipeTo(textDecoder.writable);
+        const reader = textDecoder.readable.getReader();
+
+        let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += value;
+          let lines = buffer.split("\n");
+          buffer = lines.pop();
+          for (let line of lines) {
+            line = line.trim();
+            if (line.startsWith("{") && line.endsWith("}")) {
+              try {
+                const data = JSON.parse(line);
+                if (data.type === "telemetry") {
+                  state.motionActive = data.motion;
+                  state.secondsSinceLastMotion = data.no_motion_sec;
+                  state.doorOpen = data.door;
+                  state.doorOpenDurationSec = data.door_sec;
+                  state.temperature = data.temp;
+                  state.humidity = data.humi;
+                  state.sosActive = data.sos;
+                  state.currentAlert = data.alert;
+                  state.currentLevel = data.level;
+                  state.motionCountToday = data.count;
+                  updateUI();
+                }
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("未选择端口或串口已关闭", err);
+      }
+    }
+
+    // 初始化图表
+    window.onload = function() {
+      renderEvents();
+      updateUI();
+
+      // 24小时柱状图
+      const ctxH = document.getElementById("hourlyChart").getContext("2d");
+      new Chart(ctxH, {
+        type: "bar",
+        data: {
+          labels: ["00","02","04","06","08","10","12","14","16","18","20","22"],
+          datasets: [{
+            label: "活动频次",
+            data: [0, 0, 0, 4, 8, 5, 6, 2, 5, 7, 3, 2],
+            backgroundColor: "rgba(0, 125, 255, 0.7)",
+            borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: "#8da4be" } },
+            y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#8da4be" } }
+          }
+        }
+      });
+
+      // 7日趋势折线图
+      const ctxW = document.getElementById("weeklyChart").getContext("2d");
+      new Chart(ctxW, {
+        type: "line",
+        data: {
+          labels: ["周一","周二","周三","周四","周五","周六","今日"],
+          datasets: [{
+            label: "每日总活动量",
+            data: [48, 52, 45, 50, 47, 44, 42],
+            borderColor: "#00c853",
+            backgroundColor: "rgba(0, 200, 83, 0.1)",
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: "#8da4be" } },
+            y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#8da4be" } }
+          }
+        }
+      });
+    };
+  </script>
+</body>
+</html>

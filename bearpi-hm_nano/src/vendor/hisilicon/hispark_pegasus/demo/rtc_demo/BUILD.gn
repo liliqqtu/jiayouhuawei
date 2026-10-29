@@ -1,0 +1,17 @@
+static_library("rtc_control") {
+  sources = [
+    "hal_iot_gpio_ex.c",
+    "app_demo_rtc.c",
+    "oled_ssd1306.c",
+    "//third_party/ssd1306/ssd1306_fonts.c"
+  ]
+
+  include_dirs = [
+    "./",
+    "//utils/native/lite/include",
+    "//kernel/liteos_m/kal/cmsis",
+    "//base/iot_hardware/peripheral/interfaces/kits",
+    "//device/soc/hisilicon/hi3861v100/sdk_liteos/include/base",
+    "//third_party/ssd1306"
+    ]
+}

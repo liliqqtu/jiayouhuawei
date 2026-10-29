@@ -1,0 +1,43 @@
+{
+    "name": "@ohos/jinja2",
+    "version": "",
+    "description": "Third-party open-source software jinja2 | 三方开源软件jinja2",
+    "homePage": "https://gitee.com/openharmony",
+    "license": "BSD 3-clause",
+    "repository": "https://gitee.com/openharmony/third_party_jinja2",
+    "domain": "os",
+    "language": "",
+    "publishAs": "code-segment",
+    "private": false,
+    "scripts": {},
+    "tags": [
+        "third_party"
+    ],
+    "keywords": [
+        "third-party",
+        "jinja2"
+    ],
+    "envs": {},
+    "dirs": {},
+    "readmePath": {
+        "en": "README.rst"
+    },
+    "licensePath": "LICENSE.rst",
+    "segment": {
+        "destPath": "third_party/jinja2"
+    },
+    "component": {
+        "name": "thirdparty_jinja2",
+        "subsystem": "",
+        "syscap": [],
+        "features": [],
+        "adapted_system_type": [],
+        "rom": "",
+        "ram": "",
+        "build": {
+            "sub_component": [],
+            "inner_kits": [],
+            "test": []
+        }
+    }
+}

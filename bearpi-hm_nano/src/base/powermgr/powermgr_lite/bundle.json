@@ -1,0 +1,59 @@
+{
+    "name": "@ohos/powermgr_lite",
+    "version": "",
+    "description": "提供轻量电源管理功能",
+    "homePage": "https://gitee.com/openharmony",
+    "license": "Apache V2",
+    "repository": "https://gitee.com/openharmony/powermgr_powermgr_lite",
+    "domain": "os",
+    "language": "",
+    "publishAs": "code-segment",
+    "private": false,
+    "scripts": {},
+    "tags": [
+        "base"
+    ],
+    "keywords": [
+        "powermgr",
+        "lite"
+    ],
+    "envs": [],
+    "dirs": [],
+    "author": {
+        "name": "",
+        "email": "",
+        "url": ""
+    },
+    "contributors": [
+        {
+            "name": "",
+            "email": "",
+            "url": ""
+        }
+    ],
+    "segment": {
+        "destPath": "base/powermgr/powermgr_lite"
+    },
+    "component": {
+        "name": "powermgr_lite",
+        "subsystem": "powermgr",
+        "syscap": [
+            "SystemPart.PowerMgr.PowerManager_Lite"
+        ],
+        "features": [],
+        "adapted_system_type": [
+            "small"
+        ],
+        "rom": "",
+        "ram": "",
+        "deps": {
+            "components": [],
+            "third_party": []
+        },
+        "build": {
+            "sub_component": [],
+            "inner_kits": [],
+            "test": []
+        }
+    }
+}

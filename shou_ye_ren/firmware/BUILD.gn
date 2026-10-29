@@ -1,0 +1,32 @@
+# 南向固件编译脚本（OpenHarmony 轻量系统 / gn）
+#
+# 放置位置：
+#   applications/BearPi/BearPi-HM_Nano/sample/shadow_lamp/
+# 然后在同级的 sample/BUILD.gn 的 deps 里追加一行：
+#   "//applications/BearPi/BearPi-HM_Nano/sample/shadow_lamp:shadow_lamp",
+# 再在 sample/BUILD.gn 的 lite_component("sample") 中确认 sources 未被写死。
+
+static_library("shadow_lamp") {
+  sources = [
+    "app_main.c",
+    "biz.c",
+    "drv.c",
+    "env.c",
+    "local_rule.c",
+    "net.c",
+    "sntp.c",
+  ]
+
+  include_dirs = [
+    ".",
+    # Wi-Fi 与 lwip 头文件；不同 SDK 版本路径略有差异，按需调整
+    "//foundation/communication/wifi_lite/interfaces/wifiservice",
+    "//third_party/lwip/src/include",
+    "//kernel/liteos_m/kal/cmsis",
+  ]
+
+  cflags = [
+    "-Wno-unused-parameter",
+    "-Wno-sign-compare",
+  ]
+}

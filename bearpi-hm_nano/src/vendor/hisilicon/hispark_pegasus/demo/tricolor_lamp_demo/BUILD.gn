@@ -1,0 +1,15 @@
+static_library("TraColorLampControl") {
+  sources = [
+    "hal_iot_gpio_ex.c",
+    "pca9555.c",
+    "tricolor_lamp_control.c",
+  ]
+
+  include_dirs = [
+    "./",
+    "//utils/native/lite/include",
+    "//kernel/liteos_m/kal/cmsis",
+    "//base/iot_hardware/peripheral/interfaces/kits",
+    "//device/soc/hisilicon/hi3861v100/sdk_liteos/include/base",
+    ]
+}

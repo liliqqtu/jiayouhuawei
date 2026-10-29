@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "独居老人居家安全监测与应急辅助系统"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "居家安全监测"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "守夜灯"
+    },
+    {
+      "name": "reason_write_image",
+      "value": "保存报告图到相册时需要访问图片和视频"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+    "name": "@ohos/global_resmgr_lite",
+    "version": "",
+    "description": "The resource management module, namely, resmgr, provides the function of loading multi-language GUI resources for applications, for example, displaying the application names or icons specific to a certain language.",
+    "homePage": "https://gitee.com/openharmony",
+    "license": "Apache V2",
+    "repository": "https://gitee.com/openharmony/global_resmgr_lite",
+    "domain": "os",
+    "language": "",
+    "publishAs": "code-segment",
+    "private": false,
+    "scripts": {},
+    "tags": [
+        "base"
+    ],
+    "keywords": [
+        "global",
+        "resmgr",
+        "lite"
+    ],
+    "envs": [],
+    "dirs": [],
+    "author": {
+        "name": "",
+        "email": "",
+        "url": ""
+    },
+    "contributors": [
+        {
+            "name": "",
+            "email": "",
+            "url": ""
+        }
+    ],
+    "segment": {
+        "destPath": "base/global/resmgr_lite"
+    },
+    "component": {
+        "name": "global_resource_manager_lite",
+        "subsystem": "global",
+        "syscap": [],
+        "features": [],
+        "adapted_system_type": [
+            "small"
+        ],
+        "rom": "",
+        "ram": "",
+        "deps": {
+            "components": [],
+            "third_party": []
+        },
+        "build": {
+            "sub_component": [],
+            "inner_kits": [],
+            "test": []
+        }
+    }
+}

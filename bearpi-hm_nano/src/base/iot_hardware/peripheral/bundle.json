@@ -1,0 +1,58 @@
+{
+    "name": "@ohos/iothardware_peripheral",
+    "version": "",
+    "description": "IoT外设控制模块提供对外围设备的操作能力。本模块提供如下外围设备操作接口：ADC, AT, FLASH, GPIO, I2C, I2S, PARTITION, PWM, SDIO, UART, WATCHDOG等。",
+    "homePage": "https://gitee.com/openharmony",
+    "license": "Apache V2",
+    "repository": "https://gitee.com/openharmony/iothardware_peripheral",
+    "domain": "os",
+    "language": "",
+    "publishAs": "code-segment",
+    "private": false,
+    "scripts": {},
+    "tags": [
+        "base"
+    ],
+    "keywords": [
+        "iothardware",
+        "peripheral"
+    ],
+    "envs": [],
+    "dirs": [],
+    "author": {
+        "name": "",
+        "email": "",
+        "url": ""
+    },
+    "contributors": [
+        {
+            "name": "",
+            "email": "",
+            "url": ""
+        }
+    ],
+    "segment": {
+        "destPath": "base/iot_hardware/peripheral"
+    },
+    "component": {
+        "name": "iot_controller",
+        "subsystem": "iot_hardware",
+        "syscap": [],
+        "features": [],
+        "adapted_system_type": [
+            "mini",
+            "standard"
+        ],
+        "rom": "",
+        "ram": "",
+        "deps": {
+            "components": [],
+            "third_party": []
+        },
+        "build": {
+            "sub_component": [],
+            "inner_kits": [],
+            "test": []
+        }
+    }
+}

@@ -1,0 +1,20 @@
+# Copyright (c) 2026 OpenHarmony Elderly Care System
+# 河南省信息技术应用创新大赛（开源鸿蒙） - 赛题四
+
+static_library("elderly_care_app") {
+    sources = [
+        "alarm_beeper.c",
+        "sensor_infrared.c",
+        "sensor_door.c",
+        "emergency_sos.c",
+        "sensor_environment.c",
+        "elderly_care_main.c",
+    ]
+
+    include_dirs = [
+        "//base/iot_hardware/peripheral/interfaces/kits",
+        "//vendor/bearpi/bearpi_hm_nano/common/iot_hardware_hals/include",
+        ".",
+    ]
+    deps = [ "//vendor/bearpi/bearpi_hm_nano/common/iot_hardware_hals:bearpi_iot_hardware_hals" ]
+}

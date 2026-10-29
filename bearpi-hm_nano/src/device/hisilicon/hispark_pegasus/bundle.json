@@ -1,0 +1,57 @@
+{
+    "name": "@ohos/device_hisilicon_hispark_pegasus",
+    "version": "",
+    "description": "Hi3861 chip driver software, including license files, compilation scripts, configuration files, driver implementation, and tools | Hi3861芯片驱动软件，包含LICENSE、编译脚本、配置文件、驱动实现、工具等",
+    "homePage": "https://gitee.com/openharmony",
+    "license": "Apache V2",
+    "repository": "https://gitee.com/openharmony/device_hisilicon_hispark_pegasus",
+    "domain": "os",
+    "language": "",
+    "publishAs": "code-segment",
+    "private": false,
+    "scripts": {},
+    "tags": [
+        "device"
+    ],
+    "keywords": [
+        "device",
+        "hisilicon",
+        "hispark",
+        "pegasus"
+    ],
+    "envs": [],
+    "dirs": [],
+    "author": {
+        "name": "",
+        "email": "",
+        "url": ""
+    },
+    "contributors": [
+        {
+            "name": "",
+            "email": "",
+            "url": ""
+        }
+    ],
+    "segment": {
+        "destPath": "device/hisilicon/hispark_pegasus"
+    },
+    "component": {
+        "name": "device_hisilicon_hispark_pegasus",
+        "subsystem": "",
+        "syscap": [],
+        "features": [],
+        "adapted_system_type": [],
+        "rom": "",
+        "ram": "",
+        "deps": {
+            "components": [],
+            "third_party": []
+        },
+        "build": {
+            "sub_component": [],
+            "inner_kits": [],
+            "test": []
+        }
+    }
+}
