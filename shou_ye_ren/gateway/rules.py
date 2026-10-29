@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 from gateway import util
-from gateway.config import BOARD_EVENT_TYPES, DIRECT_EVENT_TYPES
+from gateway.config import BOARD_EVENT_TYPES, DIRECT_EVENT_TYPES, ZERO_COOLDOWN_TYPES
 
 def _note(msg):
     """规则引擎的诊断日志（带时间戳，方便对着网关窗口看）。"""
@@ -445,10 +445,40 @@ class Engine(object):
             return raw_dt
         return raw_dt if raw_dt > watch else watch
 
+    def _cooldown_seconds_for(self, alarm_type):
+        """不同告警类型的时间阀门/冷却窗口（秒）。
+
+        - 摔倒、SOS、火灾等危机生命安全告警：0 秒（无冷却，随时即报）；
+        - 门窗持续开启：cooldown_door_min（默认 10 分钟 = 600 秒）；
+        - 温湿度、光照等环境状态：cooldown_env_min（默认 15 分钟 = 900 秒）。
+        """
+        if alarm_type in ZERO_COOLDOWN_TYPES:
+            return 0
+        th = self.store.thresholds()
+        if alarm_type == "DOOR_OPEN":
+            min_val = getattr(th, "cooldown_door_min", 10)
+            return max(int(min_val * 60), 60)
+        # 温湿度、光照、外出超时等持续状态告警
+        min_val = getattr(th, "cooldown_env_min", 15)
+        return max(int(min_val * 60), 60)
+
     def _emit(self, alarm_type, level, message, ts_text, device_id, zone, source, snapshot):
-        """③ 冷却去重：同类型告警处于活动期时不重复建单。"""
+        """③ 冷却去重与时间阀门：
+        1. 同类型告警处于活动期（待确认/处理中）时不重复建单；
+        2. 处置关闭后：生命安全类零冷却随时可报；环境类/门窗类处于冷却窗口内时抑制新告警，
+           避免处置关闭后两三秒因持续环境指标未变而重复报警（防告警风暴）。
+        """
         if self.store.active_alarm(alarm_type, device_id):
             return None
+
+        # 时间阀门冷却校验（防告警风暴）
+        cooldown_sec = self._cooldown_seconds_for(alarm_type)
+        if cooldown_sec > 0:
+            recent_closed = self.store.recent_closed_alarm(alarm_type, device_id, within_seconds=cooldown_sec)
+            if recent_closed:
+                # 处于处置后的静音冷却窗口内，不重复打扰家属
+                return None
+
         # 证据：触发这一刻的传感器读数。APP 详情页用它们做“证据链”，
         # 让家属/评委能复核“当时到底是多少度、门是不是开着”，而不是只看到一句结论。
         evidence = None

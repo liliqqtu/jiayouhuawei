@@ -428,6 +428,28 @@ class Store(object):
             row = self.conn.execute(sql, args).fetchone()
         return alarm_json(row)
 
+    def recent_closed_alarm(self, alarm_type, device_id=None, within_seconds=900):
+        """查询指定类型在 within_seconds 秒内最近被关闭的告警（用于时间阀门防抖与防告警风暴）。"""
+        sql = "SELECT * FROM alarm WHERE type=? AND status='closed' AND closed_ts IS NOT NULL"
+        args = [alarm_type]
+        if device_id:
+            sql += " AND device_id=?"
+            args.append(device_id)
+        sql += " ORDER BY closed_ts DESC LIMIT 1"
+        with self.lock:
+            row = self.conn.execute(sql, args).fetchone()
+        if not row:
+            return None
+        raw_closed_ts = row["closed_ts"]
+        closed_dt = util.parse_ts(raw_closed_ts)
+        if closed_dt is None:
+            return None
+        now_dt = util.now()
+        elapsed = (now_dt - closed_dt).total_seconds()
+        if 0 <= elapsed < within_seconds:
+            return alarm_json(row)
+        return None
+
     def create_alarm(self, alarm_type, level, message, ts, device_id=None,
                      zone=None, source="real", snapshot=None, evidence=None):
         with self.lock:

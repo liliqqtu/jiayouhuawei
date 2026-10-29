@@ -1,6 +1,7 @@
 /*
  * 室内微气候与温湿度环境监测子系统
- * 支持物理 SHT30 (E53_IA1 I2C1 飞线) 自适应读取与智能微气候自愈
+ * 河南省信息技术应用创新大赛（开源鸿蒙） - 赛题四
+ * 支持 E53_IA1 飞线物理温湿度传感器 (SHT30 / AHT20) 硬件直读与 I2C 智能容错
  */
 
 #include "sensor_environment.h"
@@ -12,102 +13,136 @@
 #include "iot_i2c.h"
 #include "iot_i2c_ex.h"
 
-#define SHT30_I2C_IDX       1
-#define SHT30_I2C_ADDR      0x44
-#define SHT30_I2C_BAUDRATE  400000
-
+// I2C 引脚与总线定义 (BearPi-HM Nano: GPIO_0 为 SDA, GPIO_1 为 SCL)
 #define I2C1_SDA_GPIO       0
 #define I2C1_SCL_GPIO       1
+#define SHT30_I2C_IDX       1
+
+// 飞线环境下推荐使用 100kHz 标准速率 (抗杜邦线电容寄生与触点阻抗能力远优于 400kHz)
+#define SHT30_I2C_BAUDRATE  100000
+
+#define SHT30_ADDR_PRIMARY   0x44
+#define SHT30_ADDR_SECONDARY 0x45
 
 static float g_current_temp = 24.5f;
 static float g_current_humi = 53.0f;
 static uint32_t g_env_step  = 0;
 static uint8_t  g_is_injected = 0;
-static uint8_t  g_hardware_sht30_ready = 0;
 
-// 精简周期微扰波表 (避免依赖 libm 的 sinf/cosf)
-static const int8_t s_wave_table[16] = {
-    0, 3, 6, 8, 10, 8, 6, 3, 0, -3, -6, -8, -10, -8, -6, -3
-};
+static uint8_t  g_sht30_online = 0;
+static uint16_t g_active_addr = SHT30_ADDR_PRIMARY;
+static uint32_t g_read_fail_count = 0;
 
-// SHT30 CRC8 校验算法
-static uint8_t SHT3xCheckCrc(uint8_t data[], uint8_t nbrOfBytes, uint8_t checksum)
+// CRC-8 校验函数 (多项式 0x31: x^8 + x^5 + x^4 + 1)
+static uint8_t SHT3xCheckCrc(const uint8_t data[], uint8_t nbrOfBytes, uint8_t checksum)
 {
     uint8_t crc = 0xFF;
-    uint8_t bit = 0;
-    uint8_t byteCtr;
-    const int16_t POLYNOMIAL = 0x131;
-    for (byteCtr = 0; byteCtr < nbrOfBytes; ++byteCtr) {
-        crc ^= (data[byteCtr]);
-        for (bit = 8; bit > 0; --bit) {
-            if (crc & 0x80)
-                crc = (crc << 1) ^ POLYNOMIAL;
-            else
+    for (uint8_t i = 0; i < nbrOfBytes; ++i) {
+        crc ^= data[i];
+        for (uint8_t bit = 8; bit > 0; --bit) {
+            if (crc & 0x80) {
+                crc = (crc << 1) ^ 0x31;
+            } else {
                 crc = (crc << 1);
+            }
         }
     }
     return (crc == checksum) ? 0 : 1;
 }
 
-// 物理 SHT30 硬件初始化
-static int SHT30InitHw(void)
+// 初始化 I2C 总线 GPIO
+static void I2cBusInit(void)
 {
-    // 配置 GPIO_0 为 I2C1_SDA, GPIO_1 为 I2C1_SCL
     IoTGpioInit(I2C1_SDA_GPIO);
-    IoTGpioSetFunc(I2C1_SDA_GPIO, 6);
+    IoTGpioSetFunc(I2C1_SDA_GPIO, 6); // GPIO_0 -> I2C1_SDA
+    IoTGpioSetPull(I2C1_SDA_GPIO, IOT_GPIO_PULL_UP);
+
     IoTGpioInit(I2C1_SCL_GPIO);
-    IoTGpioSetFunc(I2C1_SCL_GPIO, 6);
+    IoTGpioSetFunc(I2C1_SCL_GPIO, 6); // GPIO_1 -> I2C1_SCL
+    IoTGpioSetPull(I2C1_SCL_GPIO, IOT_GPIO_PULL_UP);
+
     IoTI2cInit(SHT30_I2C_IDX, SHT30_I2C_BAUDRATE);
+}
 
-    // 软复位 SHT30 (0x30, 0xA2)
-    uint8_t reset_cmd[2] = { 0x30, 0xA2 };
-    int ret = IoTI2cWrite(SHT30_I2C_IDX, (SHT30_I2C_ADDR << 1) | 0x00, reset_cmd, sizeof(reset_cmd));
-    if (ret != 0) {
-        return -1;
-    }
-    usleep(20000); // 延时 20ms 等待芯片复位完成
-
-    // 启动周期测量模式 (0x22, 0x36: 中重复度, 2mps)
-    uint8_t start_cmd[2] = { 0x22, 0x36 };
-    ret = IoTI2cWrite(SHT30_I2C_IDX, (SHT30_I2C_ADDR << 1) | 0x00, start_cmd, sizeof(start_cmd));
+// 探测指定 I2C 地址的 SHT30
+static int SHT30Probe(uint16_t addr)
+{
+    // 发送高重复度单次测量指令 (0x24, 0x00，禁用时钟拉伸)
+    uint8_t cmd[2] = { 0x24, 0x00 };
+    uint32_t ret = IoTI2cWrite(SHT30_I2C_IDX, (addr << 1) | 0x00, cmd, sizeof(cmd));
     return (ret == 0) ? 0 : -1;
 }
 
-// 物理 SHT30 数据读取
-static int SHT30ReadHw(float *temp, float *humi)
+// 物理 SHT30 单次测量读取 (最稳健的测量模式，对飞线接触不良免疫)
+static int SHT30ReadSingleShot(uint16_t addr, float *temp, float *humi)
 {
-    uint8_t raw[6] = {0};
-    uint8_t fetch_cmd[2] = { 0xE0, 0x00 };
-    IotI2cData i2c_data = { 0 };
-    i2c_data.sendBuf = fetch_cmd;
-    i2c_data.sendLen = sizeof(fetch_cmd);
-    i2c_data.receiveBuf = raw;
-    i2c_data.receiveLen = sizeof(raw);
-
-    int ret = IoTI2cWriteread(SHT30_I2C_IDX, (SHT30_I2C_ADDR << 1) | 0x00, &i2c_data);
+    // 1. 发送触发测量命令: 0x24 (高位), 0x00 (低位: 高重复度，无时钟拉伸)
+    uint8_t cmd[2] = { 0x24, 0x00 };
+    uint32_t ret = IoTI2cWrite(SHT30_I2C_IDX, (addr << 1) | 0x00, cmd, sizeof(cmd));
     if (ret != 0) {
         return -1;
     }
 
-    // 校验并计算温度: T = -45 + 175 * raw / 65535
-    if (SHT3xCheckCrc(raw, 2, raw[2]) == 0) {
-        uint16_t raw_t = ((uint16_t)raw[0] << 8) | raw[1];
-        raw_t &= ~0x0003;
-        *temp = -45.0f + 175.0f * (float)raw_t / 65535.0f;
-    } else {
-        return -1;
+    // 2. SHT30 芯片测量转换时间 (高重复度典型需要 15ms)
+    usleep(20000); // 延时 20ms 等待转换完成
+
+    // 3. 读取 6 字节数据: [T_MSB, T_LSB, T_CRC, H_MSB, H_LSB, H_CRC]
+    uint8_t raw[6] = {0};
+    ret = IoTI2cRead(SHT30_I2C_IDX, (addr << 1) | 0x01, raw, sizeof(raw));
+    if (ret != 0) {
+        return -2;
     }
 
-    // 校验并计算相对湿度: RH = 100 * raw / 65535
-    if (SHT3xCheckCrc(&raw[3], 2, raw[5]) == 0) {
-        uint16_t raw_h = ((uint16_t)raw[3] << 8) | raw[4];
-        raw_h &= ~0x0003;
-        *humi = 100.0f * (float)raw_h / 65535.0f;
-    } else {
-        return -1;
+    // 4. CRC 校验温度与湿度
+    if (SHT3xCheckCrc(&raw[0], 2, raw[2]) != 0) {
+        return -3; // 温度 CRC 校验失败
     }
+    if (SHT3xCheckCrc(&raw[3], 2, raw[5]) != 0) {
+        return -4; // 湿度 CRC 校验失败
+    }
+
+    // 5. 换算物理温度与相对湿度
+    uint16_t raw_t = ((uint16_t)raw[0] << 8) | raw[1];
+    raw_t &= ~0x0003;
+    *temp = -45.0f + 175.0f * (float)raw_t / 65535.0f;
+
+    uint16_t raw_h = ((uint16_t)raw[3] << 8) | raw[4];
+    raw_h &= ~0x0003;
+    *humi = 100.0f * (float)raw_h / 65535.0f;
+
+    // 边界限制
+    if (*temp < -40.0f) *temp = -40.0f;
+    if (*temp > 125.0f) *temp = 125.0f;
+    if (*humi < 0.0f)   *humi = 0.0f;
+    if (*humi > 100.0f) *humi = 100.0f;
 
     return 0;
+}
+
+// I2C 总线自检与芯片探针
+static void ProbeSensors(void)
+{
+    printf("[I2C_SCAN] Probing I2C1 bus for E53_IA1 SHT30 (GPIO_0=SDA, GPIO_1=SCL)...\n");
+
+    // 优先尝试 0x44 (SHT30 默认地址)
+    if (SHT30Probe(SHT30_ADDR_PRIMARY) == 0) {
+        g_active_addr = SHT30_ADDR_PRIMARY;
+        g_sht30_online = 1;
+        printf("[I2C_SCAN] >>> SUCCESS: Physical SHT30 found at address 0x44! <<<\n");
+        return;
+    }
+
+    // 备用尝试 0x45 (SHT30 备选地址)
+    if (SHT30Probe(SHT30_ADDR_SECONDARY) == 0) {
+        g_active_addr = SHT30_ADDR_SECONDARY;
+        g_sht30_online = 1;
+        printf("[I2C_SCAN] >>> SUCCESS: Physical SHT30 found at address 0x45! <<<\n");
+        return;
+    }
+
+    g_sht30_online = 0;
+    printf("[I2C_SCAN] [WARN] SHT30 not responding at 0x44 or 0x45!\n");
+    printf("[I2C_SCAN] [TIP] Please check jumper wires: 3V3->3.3V, GND->GND, SDA->GPIO_0, SCL->GPIO_1.\n");
 }
 
 void SensorEnvironmentInit(void)
@@ -116,16 +151,11 @@ void SensorEnvironmentInit(void)
     g_current_humi = 53.0f;
     g_env_step = 0;
     g_is_injected = 0;
-    g_hardware_sht30_ready = 0;
+    g_sht30_online = 0;
+    g_read_fail_count = 0;
 
-    // 优先尝试探测物理 SHT30 (E53_IA1 I2C 飞线接入)
-    if (SHT30InitHw() == 0) {
-        g_hardware_sht30_ready = 1;
-        printf("[ENV] Physical SHT30 sensor DETECTED on I2C1 (GPIO_0/SDA, GPIO_1/SCL)! Real sensor online.\n");
-    } else {
-        g_hardware_sht30_ready = 0;
-        printf("[ENV] Physical SHT30 not detected on I2C1. Running in adaptive micro-climate fallback mode.\n");
-    }
+    I2cBusInit();
+    ProbeSensors();
 }
 
 void SensorEnvironmentRead(float *temperature, float *humidity)
@@ -144,28 +174,40 @@ void SensorEnvironmentTick1s(void)
         return;
     }
 
-    // 1. 如果物理 SHT30 已连接，优先读取真实传感器数据
-    if (g_hardware_sht30_ready) {
-        float hw_temp = 0.0f;
-        float hw_humi = 0.0f;
-        if (SHT30ReadHw(&hw_temp, &hw_humi) == 0) {
-            g_current_temp = hw_temp;
-            g_current_humi = hw_humi;
+    // 1. 如果物理芯片在线，执行真实物理读取
+    if (g_sht30_online) {
+        float hw_t = 0.0f;
+        float hw_h = 0.0f;
+        int ret = SHT30ReadSingleShot(g_active_addr, &hw_t, &hw_h);
+        if (ret == 0) {
+            g_current_temp = hw_t;
+            g_current_humi = hw_h;
+            g_read_fail_count = 0;
+            // 真实物理数据采集成功日志
+            printf("[SHT30_PHYSICAL] Real Sensor Read -> Temp: %.1f C, Humi: %.1f %%\n", hw_t, hw_h);
             return;
         } else {
-            // 物理采样单次失败，尝试自动重新初始化芯片
-            SHT30InitHw();
+            g_read_fail_count++;
+            printf("[SHT30_PHYSICAL] Read failed (ret=%d, fail_count=%u)\n", ret, g_read_fail_count);
+            if (g_read_fail_count >= 3) {
+                // 连续 3 次失败，标记掉线，重新初始化总线
+                g_sht30_online = 0;
+                I2cBusInit();
+            }
+        }
+    } else {
+        // 2. 离线状态下：每隔 3 秒自动重新探测一次物理芯片（支持飞线热插拔）
+        g_env_step++;
+        if (g_env_step % 3 == 0) {
+            ProbeSensors();
         }
     }
 
-    // 2. 兜底自适应微气候模型
-    g_env_step++;
-    int idx_t = (g_env_step) % 16;
-    int idx_h = (g_env_step + 4) % 16;
-    float delta_t = (float)s_wave_table[idx_t] * 0.05f; // ±0.5 ℃
-    float delta_h = (float)s_wave_table[idx_h] * 0.15f; // ±1.5 %RH
-    g_current_temp = 24.5f + delta_t;
-    g_current_humi = 53.0f + delta_h;
+    // 3. 仅在真实芯片离线或断线时，采用平滑过渡提示，并避免死板的 24.5 恒温
+    // 打印明确告警提示，方便排查飞线
+    if (g_env_step % 5 == 0) {
+        printf("[ENV_OFFLINE_WARN] Physical SHT30 is NOT communicating over I2C! Check wires!\n");
+    }
 }
 
 void SensorEnvironmentInjectAlert(float temp, float humi)

@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include "cmsis_os2.h"
 #include "ohos_init.h"
@@ -24,6 +25,8 @@
 
 static volatile int g_wifi_connected = 0;
 static volatile int g_network_ready = 0;
+static volatile int g_scan_done = 0;
+static volatile int g_scan_num = 0;
 static struct netif *g_iface = NULL;
 
 // 边缘计算：离线断网 RAM 环形缓存队列
@@ -36,18 +39,20 @@ static void OnWifiConnectionChanged(int state, WifiLinkedInfo *info)
     (void)info;
     if (state == WIFI_STATE_AVALIABLE) {
         g_wifi_connected = 1;
-        printf("[WIFI_EVENT] State -> WIFI_STATE_AVALIABLE (Connected to AP!)\n");
+        printf("\n[WIFI_EVENT] State -> WIFI_STATE_AVALIABLE (AP Associated!)\n");
     } else {
         g_wifi_connected = 0;
         g_network_ready = 0;
-        printf("[WIFI_EVENT] State -> Disconnected (state=%d)\n", state);
+        printf("\n[WIFI_EVENT] State -> Disconnected (state=%d)\n", state);
     }
 }
 
 static void OnWifiScanStateChanged(int state, int size)
 {
     (void)state;
-    (void)size;
+    g_scan_num = size;
+    g_scan_done = 1;
+    printf("[WIFI_EVENT] Scan complete! Detected %d hotspot(s)\n", size);
 }
 
 static WifiEvent g_wifi_event = {
@@ -198,6 +203,71 @@ int NetworkServiceSendTelemetry(const char *json_data)
     return 0;
 }
 
+// 扫描周边 Wi-Fi，锁定指定热点的频段 (frequency) 与 BSSID
+static int ScanAndMatchTargetAp(WifiDeviceConfig *apConfig, const char *target_ssid)
+{
+    g_scan_done = 0;
+    g_scan_num = 0;
+
+    printf("[NETWORK] Scanning 2.4GHz channels for '%s'...\n", target_ssid);
+    WifiErrorCode scanRet = Scan();
+    if (scanRet != WIFI_SUCCESS) {
+        printf("[NETWORK] Scan() trigger err=%d\n", scanRet);
+        return 0;
+    }
+
+    // 等待扫描完成，最多 4 秒 (40 * 100ms)
+    for (int i = 0; i < 40; i++) {
+        osDelay(10);
+        if (g_scan_done) {
+            break;
+        }
+    }
+
+    if (!g_scan_done || g_scan_num == 0) {
+        printf("[NETWORK] Scan timeout or no APs detected in range.\n");
+        return 0;
+    }
+
+    WifiScanInfo *scanList = (WifiScanInfo *)malloc(sizeof(WifiScanInfo) * WIFI_SCAN_HOTSPOT_LIMIT);
+    if (scanList == NULL) {
+        printf("[NETWORK] Failed to allocate memory for scan list!\n");
+        return 0;
+    }
+    memset(scanList, 0, sizeof(WifiScanInfo) * WIFI_SCAN_HOTSPOT_LIMIT);
+
+    unsigned int size = WIFI_SCAN_HOTSPOT_LIMIT;
+    WifiErrorCode listRet = GetScanInfoList(scanList, &size);
+    if (listRet != WIFI_SUCCESS) {
+        printf("[NETWORK] GetScanInfoList err=%d\n", listRet);
+        free(scanList);
+        return 0;
+    }
+
+    int matched = 0;
+    for (unsigned int i = 0; i < size && i < WIFI_SCAN_HOTSPOT_LIMIT; i++) {
+        if (strlen(scanList[i].ssid) > 0) {
+            printf("  [SCAN] #%02u: SSID='%s', RSSI=%d, Freq=%d MHz\n",
+                   i + 1, scanList[i].ssid, scanList[i].rssi, scanList[i].frequency);
+        }
+        if (strcmp(scanList[i].ssid, target_ssid) == 0) {
+            printf("\n[NETWORK] >>> AP MATCHED! BSSID=%02X:%02X:%02X:%02X:%02X:%02X, Freq=%d MHz, RSSI=%d <<<\n\n",
+                   scanList[i].bssid[0], scanList[i].bssid[1], scanList[i].bssid[2],
+                   scanList[i].bssid[3], scanList[i].bssid[4], scanList[i].bssid[5],
+                   scanList[i].frequency, scanList[i].rssi);
+
+            apConfig->freq = scanList[i].frequency;
+            memcpy(apConfig->bssid, scanList[i].bssid, WIFI_MAC_LEN);
+            apConfig->securityType = scanList[i].securityType;
+            matched = 1;
+            break;
+        }
+    }
+
+    free(scanList);
+    return matched;
+}
+
 // 后台 Wi-Fi 网络守护与重连任务
 static void NetworkTask(void *arg)
 {
@@ -214,27 +284,47 @@ static void NetworkTask(void *arg)
     EnableWifi();
     osDelay(30); // 等待 300ms 确保底层 Wi-Fi 芯片就绪
 
-    WifiDeviceConfig apConfig;
-    memset(&apConfig, 0, sizeof(apConfig));
-    strncpy(apConfig.ssid, CFG_WIFI_SSID, sizeof(apConfig.ssid) - 1);
-    strncpy(apConfig.preSharedKey, CFG_WIFI_PASSWORD, sizeof(apConfig.preSharedKey) - 1);
-    apConfig.securityType = WIFI_SEC_TYPE_PSK;
-
     int netId = -1;
-    WifiErrorCode addErr = AddDeviceConfig(&apConfig, &netId);
-    printf("[NETWORK] AddDeviceConfig ret=%d, netId=%d\n", addErr, netId);
 
     while (1) {
         if (!g_wifi_connected) {
             g_network_ready = 0;
-            if (netId < 0) {
-                AddDeviceConfig(&apConfig, &netId);
-                printf("[NETWORK] Re-adding AP config, netId=%d\n", netId);
+
+            // 1. 初始化 AP 目标配置结构
+            WifiDeviceConfig apConfig;
+            memset(&apConfig, 0, sizeof(apConfig));
+            strncpy(apConfig.ssid, CFG_WIFI_SSID, sizeof(apConfig.ssid) - 1);
+            strncpy(apConfig.preSharedKey, CFG_WIFI_PASSWORD, sizeof(apConfig.preSharedKey) - 1);
+            apConfig.securityType = WIFI_SEC_TYPE_PSK;
+            apConfig.wapiPskType = WIFI_PSK_TYPE_ASCII;
+            apConfig.ipType = DHCP;
+
+            // 2. 预先扫描锁定手机热点的信道与 BSSID (大幅提高在不同信道下的重连成功率)
+            int matched = ScanAndMatchTargetAp(&apConfig, CFG_WIFI_SSID);
+            if (!matched) {
+                printf("[NETWORK] Hotspot '%s' not found in active scan.\n", CFG_WIFI_SSID);
+                printf("[NETWORK] (Tips: ensure phone screen on, hotspot 'Maximize Compatibility' / 2.4GHz enabled)\n");
+                printf("[NETWORK] Falling back to standard multi-channel association...\n");
             }
-            printf("[NETWORK] Attempting to connect to Wi-Fi AP '%s' (netId=%d)...\n", CFG_WIFI_SSID, netId);
+
+            // 3. 清理已有的 netId，防止底层配置表溢出
+            if (netId >= 0) {
+                RemoveDevice(netId);
+                netId = -1;
+            }
+
+            WifiErrorCode addErr = AddDeviceConfig(&apConfig, &netId);
+            if (addErr != WIFI_SUCCESS || netId < 0) {
+                printf("[NETWORK] AddDeviceConfig failed! err=%d, retrying...\n", addErr);
+                osDelay(300);
+                continue;
+            }
+
+            printf("[NETWORK] Connecting to AP '%s' (netId=%d, freq=%u MHz)...\n",
+                   CFG_WIFI_SSID, netId, apConfig.freq);
             ConnectTo(netId);
 
-            // 等待 AP 连接握手（最多等待 10 秒）
+            // 4. 等待底层 AP 连接握手（最多等待 10 秒）
             for (int i = 0; i < 100 && !g_wifi_connected; i++) {
                 osDelay(10); // 100ms
             }
@@ -243,29 +333,70 @@ static void NetworkTask(void *arg)
                 printf("[NETWORK] AP Associated! Requesting DHCP IP address...\n");
                 g_iface = netifapi_netif_find("wlan0");
                 if (g_iface != NULL) {
+                    // 彻底停止前次可能遗留的 DHCP 会话
+                    netifapi_dhcp_stop(g_iface);
+                    osDelay(10); // 100ms
+
                     netifapi_dhcp_start(g_iface);
-                    osDelay(150); // 等待 1.5 秒完成 DHCP 分配
-                    netifapi_netif_common(g_iface, dhcp_clients_info_show, NULL);
 
-                    printf("[NETWORK] DHCP Success! Board IP: %s\n", ip4addr_ntoa(netif_ip4_addr(g_iface)));
-                    printf("[NETWORK] Ready for Untethered Independent Power Operation!\n");
-                    g_network_ready = 1;
+                    // 轮询检查 DHCP 是否完成绑定（最多等待 15 秒）
+                    int dhcp_ok = 0;
+                    for (int t = 0; t < 150; t++) {
+                        osDelay(10); // 100ms
+                        if (netifapi_dhcp_is_bound(g_iface) == ERR_OK) {
+                            if (netif_ip4_addr(g_iface)->addr != 0) {
+                                dhcp_ok = 1;
+                                break;
+                            }
+                        }
+                    }
 
-                    // 补传断网期间积压的传感器数据
-                    NetworkServiceFlushCache();
+                    if (dhcp_ok) {
+                        printf("\n[NETWORK] >>> DHCP SUCCESS! <<<\n");
+                        printf("[NETWORK] Board IP: %s\n", ip4addr_ntoa(netif_ip4_addr(g_iface)));
+                        printf("[NETWORK] Netmask : %s\n", ip4addr_ntoa(netif_ip4_netmask(g_iface)));
+                        printf("[NETWORK] Gateway : %s\n", ip4addr_ntoa(netif_ip4_gw(g_iface)));
+                        printf("[NETWORK] System Ready for Untethered Independent Power Operation!\n\n");
+                        g_network_ready = 1;
+
+                        // 补传断网期间积压的传感器数据
+                        NetworkServiceFlushCache();
+                    } else {
+                        printf("[NETWORK] [WARN] DHCP timeout! IP not assigned by hotspot.\n");
+                        netifapi_dhcp_stop(g_iface);
+                        Disconnect();
+                        g_wifi_connected = 0;
+                        g_network_ready = 0;
+                        osDelay(300);
+                        continue;
+                    }
                 }
             } else {
                 printf("[NETWORK] Wi-Fi AP connect timeout. Running in Local Offline Edge mode.\n");
-                printf("[NETWORK] (Local safety & alarms 100%% active. Next Wi-Fi retry in 8s)\n");
-                osDelay(800); // 离线等待 8 秒再尝试重连，避免频繁消耗 CPU
+                printf("[NETWORK] (Local safety & alarms 100%% active. Next Wi-Fi retry in 5s)\n");
+                if (netId >= 0) {
+                    RemoveDevice(netId);
+                    netId = -1;
+                }
+                osDelay(500); // 离线等待 5 秒再重试
                 continue;
             }
         } else {
+            // 在线状态：检测底层 DHCP 状态是否保持
+            if (g_iface != NULL && netifapi_dhcp_is_bound(g_iface) != ERR_OK) {
+                printf("[NETWORK] DHCP link lost bound state! Re-initiating connect...\n");
+                g_network_ready = 0;
+                g_wifi_connected = 0;
+                netifapi_dhcp_stop(g_iface);
+                Disconnect();
+                continue;
+            }
+
             // 在线状态：若有积压缓存，尝试补发
             if (g_network_ready && g_cache_count > 0) {
                 NetworkServiceFlushCache();
             }
-            osDelay(200); // 2秒心跳巡检
+            osDelay(100); // 1秒心跳巡检
         }
     }
 }

@@ -35,6 +35,11 @@ BOARD_EVENT_TYPES = (
     "TEMP_WARM", "HUM_WARN_HIGH", "HUM_WARN_LOW",
 )
 
+# 紧急危急生命安全告警：零冷却间隔，绝不抑制！只要事件触发，随时立即报警建单！
+ZERO_COOLDOWN_TYPES = (
+    "SOS", "FALL", "FALL_DOWN", "GAS", "SMOKE", "TEMP_FIRE", "TEMP_RISE", "NO_MOTION"
+)
+
 
 @dataclass
 class Thresholds:
@@ -45,6 +50,8 @@ class Thresholds:
     night_bathroom_min: int = 2     # 夜间卫生间单独收紧（最高风险组合）
     away_max_min: int = 120         # 疑似外出最长容忍时长
     door_open_max_min: int = 10     # 门窗持续开启提醒
+    cooldown_env_min: int = 15      # 环境类告警（温湿度、光照）处置关闭后的静音冷却窗口（分钟）
+    cooldown_door_min: int = 10     # 门窗持续开启告警处置关闭后的冷却窗口（分钟）
     escalate_min: int = 10          # 待确认超时自动升级
     temp_warm: float = 28.0         # 偏热提醒
     temp_high: float = 35.0         # 过高
