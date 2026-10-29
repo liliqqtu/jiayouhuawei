@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 
 from gateway.api import Api            # noqa: E402
-from gateway.server import Handler      # noqa: E402
+from gateway.server import Handler, QuietServer  # noqa: E402
 from gateway.store import Store         # noqa: E402
 
 TZ = timezone(timedelta(hours=8))
@@ -39,7 +39,7 @@ class ApiTestCase(unittest.TestCase):
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp(prefix="shadowlamp-test-")
         cls.store = Store(os.path.join(cls.tmpdir, "test.db"))
-        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        cls.httpd = QuietServer(("127.0.0.1", 0), Handler)
         cls.httpd.api = Api(cls.store)
         cls.httpd.daemon_threads = True
         cls.port = cls.httpd.server_address[1]
@@ -545,7 +545,7 @@ class BoardEventsTestCase(unittest.TestCase):
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp(prefix="shadowlamp-board-")
         cls.store = Store(os.path.join(cls.tmpdir, "board.db"))
-        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        cls.httpd = QuietServer(("127.0.0.1", 0), Handler)
         cls.httpd.api = Api(cls.store)
         cls.httpd.daemon_threads = True
         cls.port = cls.httpd.server_address[1]
@@ -678,7 +678,7 @@ class SirenControlTestCase(unittest.TestCase):
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp(prefix="shadowlamp-siren-")
         cls.store = Store(os.path.join(cls.tmpdir, "siren.db"))
-        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        cls.httpd = QuietServer(("127.0.0.1", 0), Handler)
         cls.httpd.api = Api(cls.store)
         cls.httpd.daemon_threads = True
         cls.port = cls.httpd.server_address[1]

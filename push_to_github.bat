@@ -1,46 +1,27 @@
 @echo off
 chcp 936 >nul
-title ÍÆËÍÏîÄ¿µ½ GitHub - liliqqtu/jiayouhuawei
-
-set "PATH=D:\git\Git\cmd;%PATH%"
+title GitHub åŒæ­¥æ¨é€å·¥å…· - liliqqtu/jiayouhuawei
 
 echo ==========================================================
-echo   ÕıÔÚ×¼±¸ÍÆËÍÏîÄ¿µ½ GitHub...
-echo   Ä¿±ê²Ö¿â: https://github.com/liliqqtu/jiayouhuawei
+echo    æ­£åœ¨æ£€æŸ¥å¹¶æ¨é€åˆ° GitHub ä»“åº“...
+echo    https://github.com/liliqqtu/jiayouhuawei
 echo ==========================================================
-echo.
 
 cd /d D:\Dream
-
-echo [1/3] ¼ì²éÔ¶³Ì²Ö¿âÅäÖÃ...
-git remote -v
+"D:\git\Git\cmd\git.exe" status
 
 echo.
-echo [2/3] ¼ì²é×îĞÂÌá½»ĞÅÏ¢...
-git log -1 --oneline
+echo æ­£åœ¨æ·»åŠ æ‰€æœ‰æ”¹åŠ¨...
+"D:\git\Git\cmd\git.exe" add .
+
+echo æ­£åœ¨æäº¤æ”¹åŠ¨...
+"D:\git\Git\cmd\git.exe" commit -m "feat: æ”¯æŒå°ç†Šæ´¾ç‹¬ç«‹ä¾›ç”µæ— çº¿Wi-Fiç»„ç½‘(UDP 9999)ä¸è¾¹ç¼˜æ–­ç½‘ç¯å½¢å¯¹è´¦"
+
+echo æ­£åœ¨æ¨é€åˆ° GitHub (origin main)...
+"D:\git\Git\cmd\git.exe" push origin main
 
 echo.
-echo [3/3] ÕıÔÚÍÆËÍµ½ GitHub main ·ÖÖ§...
-echo £¨ÈôÆÁÄ»µ¯³ö GitHub µÇÂ¼ÊÚÈ¨´°¿Ú£¬Çëµã»÷ "Sign in with your browser" ÊÚÈ¨¼´¿É£©
-echo.
-
-git push -u origin main
-
-if %ERRORLEVEL% EQU 0 (
-    echo.
-    echo ==========================================================
-    echo   ? ÍÆËÍ³É¹¦£¡
-    echo   Çë·ÃÎÊ GitHub ²é¿´£ºhttps://github.com/liliqqtu/jiayouhuawei
-    echo ==========================================================
-) else (
-    echo.
-    echo ==========================================================
-    echo   ?? ÍÆËÍÎ´Íê³É¡£
-    echo   ³£¼ûÔ­Òò£º
-    echo   1. Ê×´ÎÍÆËÍĞèÒªÊÚÈ¨£ºÈôµ¯³öÁËä¯ÀÀÆ÷µÇÂ¼½çÃæ£¬ÇëÍê³ÉÊÚÈ¨ºóÖØĞÂÔËĞĞ¡£
-    echo   2. ÍøÂçÔ­Òò£ºÇëÈ·±£´úÀíÈí¼ş (Èç Clash) ´¦ÓÚ¿ªÆô×´Ì¬¡£
-    echo ==========================================================
-)
-
-echo.
+echo ==========================================================
+echo    æ¨é€å®Œæˆï¼
+echo ==========================================================
 pause

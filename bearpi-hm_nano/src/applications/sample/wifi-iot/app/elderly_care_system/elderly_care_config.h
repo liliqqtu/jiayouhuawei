@@ -109,6 +109,24 @@ typedef struct {
     uint32_t      uptime_seconds;        // 系统运行总时间(秒)
 } elderly_care_data_t;
 
+/* ====================================================================
+ * 独立供电与无线 Wi-Fi 传输 / 离线环形缓存配置
+ * ==================================================================== */
+
+// 1. 无线路由器或手机热点 SSID 与密码 (2.4GHz)
+// 硬件接独立电源（充电宝/电源适配器）时，通过 Wi-Fi 自动联网
+#define CFG_WIFI_SSID               "test-wifi"
+#define CFG_WIFI_PASSWORD           "12345678"
+
+// 2. 守夜人网关目标 IP 与 UDP 端口
+// 可配置为具体网关主机 IP，或局域网受限广播 "255.255.255.255"
+#define CFG_GATEWAY_IP              "10.202.41.10"
+#define CFG_UDP_PORT                9999
+
+// 3. 边缘计算断网环形缓存深度（条数）与单条最大字节
+#define CFG_CACHE_DEPTH             24
+#define CFG_CACHE_ITEM_SIZE         256
+
 #ifdef __cplusplus
 }
 #endif

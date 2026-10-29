@@ -317,9 +317,10 @@ class QuietServer(ThreadingHTTPServer):
 
     def server_bind(self):
         self.server_name = "localhost"
-        self.server_port = self.server_address[1]
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(self.server_address)
+        self.server_address = self.socket.getsockname()
+        self.server_port = self.server_address[1]
 
     def handle_error(self, request, client_address):
         import sys
@@ -347,8 +348,8 @@ def main(argv=None):
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="监听端口，默认 8780")
     parser.add_argument("--db", default=DEFAULT_DB, help="SQLite 路径，默认 data/gateway.db")
     parser.add_argument("--lan", action="store_true", help="监听 0.0.0.0，允许手机/开发板访问")
-    parser.add_argument("--udp-port", type=int, default=0,
-                        help="同时监听 UDP 端口收 JSON（0=关闭），Wi-Fi 直连模式用 9999")
+    parser.add_argument("--udp-port", type=int, default=9999,
+                        help="同时监听 UDP 端口收 JSON（默认 9999，0=关闭），Wi-Fi 独立供电模式通道")
     parser.add_argument("--serial", default="",
                         help="USB 串口桥接模式，例如 COM3；与 --udp-port 可同时启用")
     parser.add_argument("--baud", type=int, default=115200, help="串口波特率")

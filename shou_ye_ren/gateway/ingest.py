@@ -52,6 +52,55 @@ def parse_payload(text):
     return data, ""
 
 
+def normalize_telemetry_payload(payload, channel="udp"):
+    """将开发板发出的精简遥测报文或标准快照统一转换为网关规范结构。"""
+    if not isinstance(payload, dict):
+        return payload
+
+    if payload.get("type") == "telemetry":
+        pir = bool(payload.get("motion", 0))
+        door = bool(payload.get("door", 0))
+        temp = util.as_float(payload.get("temp")) or 25.0
+        humi = util.as_float(payload.get("humi")) or 50.0
+        uptime = util.as_int(payload.get("uptime")) or 1
+        device_id = str(payload.get("deviceId") or "bearpi-001")
+        power_state = "battery" if channel == "udp" else "mains"
+
+        normalized = {
+            "deviceId": device_id,
+            "ts": payload.get("ts") or util.iso_now(),
+            "seq": uptime,
+            "pirDetected": pir,
+            "lastMotionTs": util.iso_now() if pir else None,
+            "lastMotionZone": "living",
+            "temperature": round(temp, 1),
+            "humidity": round(humi, 1),
+            "lux": 150.0,
+            "doorOpen": door,
+            "battery": 95.0,
+            "powerState": power_state,
+            "rssi": -48,
+            "online": True,
+            "source": "hardware",
+            "fwVersion": "bearpi-1.0.0",
+            "sos": util.as_int(payload.get("sos", 0)),
+            "alert": payload.get("alert"),
+            "level": payload.get("level"),
+        }
+        return normalized
+
+    # 兜底默认字段
+    if "source" not in payload:
+        payload["source"] = "hardware"
+    if "ts" not in payload:
+        payload["ts"] = util.iso_now()
+    if "seq" not in payload:
+        payload["seq"] = 1
+    if "deviceId" not in payload:
+        payload["deviceId"] = "bearpi-001"
+    return payload
+
+
 def extract_serial_json(line):
     """从一行串口输出里取 JSON；没有则返回空串。"""
     if not line:
@@ -105,6 +154,20 @@ class UdpIngest(threading.Thread):
                 self.dropped += 1
                 self.log("[udp] 丢弃来自 %s 的非法报文：%s" % (addr[0], err))
                 continue
+
+            payload = normalize_telemetry_payload(payload, channel="udp")
+            if payload.get("sos") == 1:
+                try:
+                    self.api.engine.on_event({
+                        "deviceId": payload.get("deviceId", "bearpi-001"),
+                        "ts": payload.get("ts") or util.iso_now(),
+                        "type": "SOS",
+                        "source": "hardware",
+                        "payload": {"zone": "living", "trigger": "f1_key", "channel": "udp_wifi"}
+                    })
+                except Exception as e:
+                    self.log("[udp] SOS 事件触发异常: %s" % e)
+
             try:
                 result = self.api.ingest_snapshot(payload, channel="udp")
                 self.log("[udp] %s <- %s seq=%s alarms=%d"
@@ -190,6 +253,20 @@ class SerialIngest(threading.Thread):
                     self.dropped += 1
                     self.log("[serial] 丢弃非法 JSON：%s" % err)
                     continue
+
+                payload = normalize_telemetry_payload(payload, channel="serial")
+                if payload.get("sos") == 1:
+                    try:
+                        self.api.engine.on_event({
+                            "deviceId": payload.get("deviceId", "bearpi-001"),
+                            "ts": payload.get("ts") or util.iso_now(),
+                            "type": "SOS",
+                            "source": "hardware",
+                            "payload": {"zone": "living", "trigger": "f1_key", "channel": "serial_usb"}
+                        })
+                    except Exception as e:
+                        self.log("[serial] SOS 事件触发异常: %s" % e)
+
                 try:
                     self.api.ingest_snapshot(payload, channel="serial")
                 except Exception as exc:

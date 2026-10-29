@@ -16,6 +16,7 @@
 #include "sensor_door.h"
 #include "emergency_sos.h"
 #include "sensor_environment.h"
+#include "network_service.h"
 
 #define TASK_STACK_SIZE     (1024 * 8)
 #define TASK_PRIORITY       osPriorityNormal
@@ -47,6 +48,7 @@ static void ElderlyCareTask(void *arg)
     SensorDoorInit();
     EmergencySosInit();
     SensorEnvironmentInit();
+    NetworkServiceInit();
 
     memset(&g_care_data, 0, sizeof(g_care_data));
     g_care_data.current_level = ALERT_LEVEL_NORMAL;
@@ -120,21 +122,28 @@ static void ElderlyCareTask(void *arg)
             AlarmBeeperSetMode(new_level, new_alert);
 
             // ================= 格式化遥测输出 (标准 JSON 流) =================
-            // 串口输出供上位机/鸿蒙北向系统毫秒级解析展示
-            printf("{\"type\":\"telemetry\",\"uptime\":%u,\"motion\":%u,\"no_motion_sec\":%u,"
-                   "\"door\":%u,\"door_sec\":%u,\"temp\":%.1f,\"humi\":%.1f,\"sos\":%u,"
-                   "\"alert\":%u,\"level\":%u,\"count\":%u}\n",
-                   g_care_data.uptime_seconds,
-                   g_care_data.motion_active,
-                   g_care_data.seconds_since_last_motion,
-                   g_care_data.door_open,
-                   g_care_data.door_open_duration_sec,
-                   g_care_data.temperature,
-                   g_care_data.humidity,
-                   g_care_data.sos_active,
-                   (uint32_t)g_care_data.current_alert,
-                   (uint32_t)g_care_data.current_level,
-                   g_care_data.motion_events_today);
+            char telemetry_buf[256];
+            snprintf(telemetry_buf, sizeof(telemetry_buf),
+                     "{\"type\":\"telemetry\",\"deviceId\":\"bearpi-001\",\"uptime\":%u,\"motion\":%u,\"no_motion_sec\":%u,"
+                     "\"door\":%u,\"door_sec\":%u,\"temp\":%.1f,\"humi\":%.1f,\"sos\":%u,"
+                     "\"alert\":%u,\"level\":%u,\"count\":%u}",
+                     g_care_data.uptime_seconds,
+                     g_care_data.motion_active,
+                     g_care_data.seconds_since_last_motion,
+                     g_care_data.door_open,
+                     g_care_data.door_open_duration_sec,
+                     g_care_data.temperature,
+                     g_care_data.humidity,
+                     g_care_data.sos_active,
+                     (uint32_t)g_care_data.current_alert,
+                     (uint32_t)g_care_data.current_level,
+                     g_care_data.motion_events_today);
+
+            // 通道 1: 串口输出（USB 有线调试模式）
+            printf("%s\n", telemetry_buf);
+
+            // 通道 2: 无线 Wi-Fi UDP 遥测 + 离线断网环形缓存（独立供电脱机模式）
+            NetworkServiceSendTelemetry(telemetry_buf);
 
             if (new_level == ALERT_LEVEL_CRITICAL) {
                 printf("[ALERT_BROADCAST] CRITICAL ALARM! Type=%u (1:SOS, 2:NoMotion, 4:TempHigh)\n", new_alert);

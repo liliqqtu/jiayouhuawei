@@ -44,6 +44,14 @@ def post_snapshot(payload):
         print(f"[Bridge Error] 上报网关失败: {e}")
         return None
 
+def get_latest_snapshot():
+    req = request.Request(f"{GATEWAY_URL}/snapshot", method="GET")
+    try:
+        with request.urlopen(req, timeout=1.5) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+
 def post_event(event_type, payload=None):
     body = {
         "deviceId": DEVICE_ID,
@@ -129,6 +137,17 @@ def main():
                     print(f"[成功] 重新检测并连接到串口: {new_port}")
                 except Exception:
                     ser = None
+
+        # 若无串口连接，检测小熊派是否正在通过无线 Wi-Fi (UDP 9999) 独立供电上报
+        if ser is None:
+            latest = get_latest_snapshot()
+            if latest and latest.get("source") == "hardware":
+                tag = "[无线 Wi-Fi 模式]"
+                alarms = latest.get("alarms") or []
+                alarm_str = f" [告警: {', '.join(alarms)}]" if alarms else ""
+                print(f"[{iso_now()}] {tag} 接收到小熊派无线数据 (UDP:9999): 温度={latest.get('temperature')}℃, 门磁={'开门' if latest.get('doorOpen') else '关闭'}, 人体={'有人' if latest.get('pirDetected') else '静止'}{alarm_str}")
+                time.sleep(1)
+                continue
 
         # 从串口读取数据
         if ser:

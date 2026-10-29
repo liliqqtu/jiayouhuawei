@@ -8,12 +8,17 @@ static_library("elderly_care_app") {
         "sensor_door.c",
         "emergency_sos.c",
         "sensor_environment.c",
+        "network_service.c",
         "elderly_care_main.c",
     ]
 
     include_dirs = [
         "//base/iot_hardware/peripheral/interfaces/kits",
         "//vendor/bearpi/bearpi_hm_nano/common/iot_hardware_hals/include",
+        "//foundation/communication/wifi_lite/interfaces/wifiservice",
+        "//kernel/liteos_m/kal/cmsis",
+        "//device/hisilicon/hispark_pegasus/sdk_liteos/third_party/lwip_sack/include",
+        "//utils/native/lite/include",
         ".",
     ]
     deps = [ "//vendor/bearpi/bearpi_hm_nano/common/iot_hardware_hals:bearpi_iot_hardware_hals" ]
