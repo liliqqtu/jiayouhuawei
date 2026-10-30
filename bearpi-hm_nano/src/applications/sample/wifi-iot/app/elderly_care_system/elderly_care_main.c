@@ -1,7 +1,5 @@
 /*
- * 河南省信息技术应用创新大赛（开源鸿蒙） - 赛题四
- * 独居老人居家安全监测与应急辅助系统
- * 主任务调度与状态机核心控制引擎
+ * 主控任务调度与状态判断
  */
 
 #include <stdio.h>
@@ -23,7 +21,7 @@
 
 static elderly_care_data_t g_care_data;
 
-// 获取系统全局状态快照
+// 获取当前系统状态
 void ElderlyCareGetData(elderly_care_data_t *out_data)
 {
     if (out_data != NULL) {
@@ -31,18 +29,15 @@ void ElderlyCareGetData(elderly_care_data_t *out_data)
     }
 }
 
-// 核心主循环线程
+// 主循环任务
 static void ElderlyCareTask(void *arg)
 {
     (void)arg;
     uint32_t ms_accumulator = 0;
 
-    printf("\n======================================================\n");
-    printf("   OpenHarmony Smart Elderly Care System Started!     \n");
-    printf("   河南信创大赛·赛题四: 独居老人居家安全与应急辅助系统   \n");
-    printf("======================================================\n\n");
+    printf("\n[SYS] Elderly care system start\n\n");
 
-    // 1. 初始化所有硬件模块
+    // 初始化外设
     AlarmBeeperInit();
     SensorInfraredInit();
     SensorDoorInit();
@@ -54,24 +49,22 @@ static void ElderlyCareTask(void *arg)
     g_care_data.current_level = ALERT_LEVEL_NORMAL;
     g_care_data.current_alert = ALERT_TYPE_NONE;
 
-    // 2. 状态机调度主循环
     while (1) {
-        // 50ms 高频任务: 按键扫描与声光模式状态机
+        // 50ms按键和声光刷新
         EmergencySosPoll();
         AlarmBeeperTick(50);
-        osDelay(5); // 50ms 延时
+        osDelay(5); // 50ms
 
         ms_accumulator += 50;
         if (ms_accumulator >= 1000) {
             ms_accumulator = 0;
             g_care_data.uptime_seconds++;
 
-            // 1秒周期任务: 各传感器更新计时驱动
+            // 1秒读取一次传感器状态
             SensorInfraredTick1s();
             SensorDoorTick1s();
             SensorEnvironmentTick1s();
 
-            // 收集最新传感器数据
             g_care_data.motion_active = SensorInfraredGetRealtime();
             g_care_data.seconds_since_last_motion = SensorInfraredGetSecondsSinceLastMotion();
             g_care_data.motion_events_today = SensorInfraredGetTodayCount();
@@ -82,36 +75,35 @@ static void ElderlyCareTask(void *arg)
             g_care_data.sos_active = EmergencySosIsActive();
             SensorEnvironmentRead(&g_care_data.temperature, &g_care_data.humidity);
 
-            // ================= 综合决策与告警仲裁引擎 =================
+            // 报警状态判定
             alert_level_t new_level = ALERT_LEVEL_NORMAL;
             alert_type_t  new_alert = ALERT_TYPE_NONE;
 
-            // 优先级 1: 老人主动按下紧急求助键 (最高危机等级)
+            // 1. SOS报警
             if (g_care_data.sos_active) {
                 new_level = ALERT_LEVEL_CRITICAL;
                 new_alert = ALERT_TYPE_SOS;
             }
-            // 优先级 2: 室内严重高温异常 (火灾/过热隐患)
+            // 2. 高温报警
             else if (g_care_data.temperature >= DEFAULT_TEMP_HIGH_ALERT) {
                 new_level = ALERT_LEVEL_CRITICAL;
                 new_alert = ALERT_TYPE_TEMP_HIGH;
             }
-            // 优先级 3: 长时间无活动判定 (疑似老人突发疾病跌倒或昏迷)
+            // 3. 超时无活动(疑似摔倒或异常)
             else if (g_care_data.seconds_since_last_motion >= DEFAULT_NO_MOTION_TIMEOUT_SEC) {
                 new_level = ALERT_LEVEL_CRITICAL;
                 new_alert = ALERT_TYPE_NO_MOTION;
             }
-            // 优先级 4: 门窗超时长开未关
+            // 4. 门开超时
             else if (g_care_data.door_open_duration_sec >= DEFAULT_DOOR_OPEN_TIMEOUT_SEC) {
                 new_level = ALERT_LEVEL_WARNING;
                 new_alert = ALERT_TYPE_DOOR_TIMEOUT;
             }
-            // 优先级 5: 室内温度过低 (采暖故障/极寒受冻风险)
+            // 5. 低温
             else if (g_care_data.temperature <= DEFAULT_TEMP_LOW_ALERT) {
                 new_level = ALERT_LEVEL_WARNING;
                 new_alert = ALERT_TYPE_TEMP_LOW;
             }
-            // 正常状态
             else {
                 new_level = ALERT_LEVEL_NORMAL;
                 new_alert = ALERT_TYPE_NONE;
@@ -121,7 +113,7 @@ static void ElderlyCareTask(void *arg)
             g_care_data.current_alert = new_alert;
             AlarmBeeperSetMode(new_level, new_alert);
 
-            // ================= 格式化遥测输出 (标准 JSON 流) =================
+            // 打包成json字符串
             char telemetry_buf[256];
             snprintf(telemetry_buf, sizeof(telemetry_buf),
                      "{\"type\":\"telemetry\",\"deviceId\":\"bearpi-001\",\"uptime\":%u,\"motion\":%u,\"no_motion_sec\":%u,"
@@ -139,20 +131,18 @@ static void ElderlyCareTask(void *arg)
                      (uint32_t)g_care_data.current_level,
                      g_care_data.motion_events_today);
 
-            // 通道 1: 串口输出（USB 有线调试模式）
+            // 串口打印与网络发送
             printf("%s\n", telemetry_buf);
-
-            // 通道 2: 无线 Wi-Fi UDP 遥测 + 离线断网环形缓存（独立供电脱机模式）
             NetworkServiceSendTelemetry(telemetry_buf);
 
             if (new_level == ALERT_LEVEL_CRITICAL) {
-                printf("[ALERT_BROADCAST] CRITICAL ALARM! Type=%u (1:SOS, 2:NoMotion, 4:TempHigh)\n", new_alert);
+                printf("[ALERT] Level=CRITICAL, Type=%u\n", new_alert);
             }
         }
     }
 }
 
-// 应用程序入口
+// 入口函数
 static void ElderlyCareAppEntry(void)
 {
     osThreadAttr_t attr;
@@ -165,9 +155,9 @@ static void ElderlyCareAppEntry(void)
     attr.priority = TASK_PRIORITY;
 
     if (osThreadNew(ElderlyCareTask, NULL, &attr) == NULL) {
-        printf("[ERROR] Failed to create ElderlyCareTask thread!\n");
+        printf("[ERROR] Create ElderlyCareTask failed!\n");
     } else {
-        printf("[SUCCESS] ElderlyCareTask thread created.\n");
+        printf("[SUCCESS] ElderlyCareTask created.\n");
     }
 }
 

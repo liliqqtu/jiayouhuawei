@@ -1,5 +1,4 @@
-# Copyright (c) 2026 OpenHarmony Elderly Care System
-# 河南省信息技术应用创新大赛（开源鸿蒙） - 赛题四
+# 独居老人安全监测系统
 
 static_library("elderly_care_app") {
     sources = [

@@ -1,7 +1,5 @@
 /*
- * 河南省信息技术应用创新大赛（开源鸿蒙） - 赛题四
- * 独居老人居家安全监测与应急辅助系统
- * 无线网络传输管理与边缘离线缓存对账服务
+ * Wi-Fi 连接管理与 UDP 遥测
  */
 
 #include <stdio.h>
@@ -29,7 +27,7 @@ static volatile int g_scan_done = 0;
 static volatile int g_scan_num = 0;
 static struct netif *g_iface = NULL;
 
-// 边缘计算：离线断网 RAM 环形缓存队列
+// 离线缓存队列
 static char g_cache[CFG_CACHE_DEPTH][CFG_CACHE_ITEM_SIZE];
 static int  g_cache_count = 0;
 static osMutexId_t g_cache_mutex = NULL;
@@ -39,11 +37,11 @@ static void OnWifiConnectionChanged(int state, WifiLinkedInfo *info)
     (void)info;
     if (state == WIFI_STATE_AVALIABLE) {
         g_wifi_connected = 1;
-        printf("\n[WIFI_EVENT] State -> WIFI_STATE_AVALIABLE (AP Associated!)\n");
+        printf("\n[WIFI_EVENT] Connected to AP!\n");
     } else {
         g_wifi_connected = 0;
         g_network_ready = 0;
-        printf("\n[WIFI_EVENT] State -> Disconnected (state=%d)\n", state);
+        printf("\n[WIFI_EVENT] Disconnected (state=%d)\n", state);
     }
 }
 
@@ -52,7 +50,7 @@ static void OnWifiScanStateChanged(int state, int size)
     (void)state;
     g_scan_num = size;
     g_scan_done = 1;
-    printf("[WIFI_EVENT] Scan complete! Detected %d hotspot(s)\n", size);
+    printf("[WIFI_EVENT] Scan complete: %d APs\n", size);
 }
 
 static WifiEvent g_wifi_event = {
@@ -63,7 +61,7 @@ static WifiEvent g_wifi_event = {
     .OnHotspotStaLeave = NULL
 };
 
-// 发送单个 UDP 数据包到网关（单播指定 IP + 广播 255.255.255.255 双重保活）
+// 发送 UDP 数据包
 static int SendUdpPacket(const char *data)
 {
     if (data == NULL || strlen(data) == 0) {
@@ -72,7 +70,7 @@ static int SendUdpPacket(const char *data)
 
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
-        printf("[UDP] socket creation failed\n");
+        printf("[UDP] socket failed\n");
         return -1;
     }
 
@@ -81,7 +79,7 @@ static int SendUdpPacket(const char *data)
 
     int len = (int)strlen(data);
 
-    // 1. 单播给配置的网关目标 IP
+    // 单播发送
     struct sockaddr_in dest;
     memset(&dest, 0, sizeof(dest));
     dest.sin_family = AF_INET;
@@ -89,7 +87,7 @@ static int SendUdpPacket(const char *data)
     dest.sin_addr.s_addr = inet_addr(CFG_GATEWAY_IP);
     int sent = sendto(sock, data, len, 0, (struct sockaddr *)&dest, sizeof(dest));
 
-    // 2. 局域网全网受限广播（防电脑换热点后 IP 漂移）
+    // 广播兜底
     struct sockaddr_in bcast;
     memset(&bcast, 0, sizeof(bcast));
     bcast.sin_family = AF_INET;
@@ -100,13 +98,13 @@ static int SendUdpPacket(const char *data)
     lwip_close(sock);
 
     if (sent != len) {
-        printf("[UDP] sendto error (sent=%d, total=%d)\n", sent, len);
+        printf("[UDP] send error: sent=%d, total=%d\n", sent, len);
         return -1;
     }
     return 0;
 }
 
-// 离线缓存入队 (环形覆盖最旧)
+// 离线缓存入队
 void NetworkServicePushCache(const char *json_data)
 {
     if (json_data == NULL || strlen(json_data) == 0) {
@@ -118,7 +116,7 @@ void NetworkServicePushCache(const char *json_data)
     }
 
     if (g_cache_count >= CFG_CACHE_DEPTH) {
-        // 覆盖最早的一条，整体前移
+        // 队列满则移出最旧的一条
         memmove(g_cache[0], g_cache[1], (CFG_CACHE_DEPTH - 1) * CFG_CACHE_ITEM_SIZE);
         g_cache_count = CFG_CACHE_DEPTH - 1;
     }
@@ -127,14 +125,14 @@ void NetworkServicePushCache(const char *json_data)
     g_cache[g_cache_count][CFG_CACHE_ITEM_SIZE - 1] = '\0';
     g_cache_count++;
 
-    printf("[NET_CACHE] Offline cached frame #%d (total backlog: %d)\n", g_cache_count, g_cache_count);
+    printf("[CACHE] Cached item #%d\n", g_cache_count);
 
     if (g_cache_mutex != NULL) {
         osMutexRelease(g_cache_mutex);
     }
 }
 
-// 断网恢复后补传
+// 补发离线缓存
 int NetworkServiceFlushCache(void)
 {
     if (!g_network_ready || g_cache_count == 0) {
@@ -152,9 +150,9 @@ int NetworkServiceFlushCache(void)
         if (ret == 0) {
             flushed++;
             i++;
-            osDelay(2); // 20ms 错峰避免网络拥塞
+            osDelay(2);
         } else {
-            break; // 仍有网络波动，留待下一周期补发
+            break;
         }
     }
 
@@ -163,7 +161,7 @@ int NetworkServiceFlushCache(void)
             memmove(g_cache[0], g_cache[i], (g_cache_count - i) * CFG_CACHE_ITEM_SIZE);
         }
         g_cache_count -= i;
-        printf("[NET_CACHE] Backfilled %d cached frames! Backlog remaining: %d\n", flushed, g_cache_count);
+        printf("[CACHE] Flushed %d items, remain: %d\n", flushed, g_cache_count);
     }
 
     if (g_cache_mutex != NULL) {
@@ -268,21 +266,17 @@ static int ScanAndMatchTargetAp(WifiDeviceConfig *apConfig, const char *target_s
     return matched;
 }
 
-// 后台 Wi-Fi 网络守护与重连任务
+// Wi-Fi 任务
 static void NetworkTask(void *arg)
 {
     (void)arg;
-    osDelay(100); // 开机延时 1 秒，等待主控与传感器就绪
+    osDelay(100);
 
-    printf("\n======================================================\n");
-    printf("   [NETWORK] Independent Power & Wi-Fi Service Init   \n");
-    printf("   Target SSID: %s\n", CFG_WIFI_SSID);
-    printf("   Target Gateway: %s:%d (UDP Mode)\n", CFG_GATEWAY_IP, CFG_UDP_PORT);
-    printf("======================================================\n\n");
+    printf("\n[NETWORK] Wi-Fi init, SSID: %s\n\n", CFG_WIFI_SSID);
 
     RegisterWifiEvent(&g_wifi_event);
     EnableWifi();
-    osDelay(30); // 等待 300ms 确保底层 Wi-Fi 芯片就绪
+    osDelay(30);
 
     int netId = -1;
 
@@ -290,7 +284,7 @@ static void NetworkTask(void *arg)
         if (!g_wifi_connected) {
             g_network_ready = 0;
 
-            // 1. 初始化 AP 目标配置结构
+            // 配置热点信息
             WifiDeviceConfig apConfig;
             memset(&apConfig, 0, sizeof(apConfig));
             strncpy(apConfig.ssid, CFG_WIFI_SSID, sizeof(apConfig.ssid) - 1);
@@ -299,15 +293,12 @@ static void NetworkTask(void *arg)
             apConfig.wapiPskType = WIFI_PSK_TYPE_ASCII;
             apConfig.ipType = DHCP;
 
-            // 2. 预先扫描锁定手机热点的信道与 BSSID (大幅提高在不同信道下的重连成功率)
+            // 先扫描热点匹配信道
             int matched = ScanAndMatchTargetAp(&apConfig, CFG_WIFI_SSID);
             if (!matched) {
-                printf("[NETWORK] Hotspot '%s' not found in active scan.\n", CFG_WIFI_SSID);
-                printf("[NETWORK] (Tips: ensure phone screen on, hotspot 'Maximize Compatibility' / 2.4GHz enabled)\n");
-                printf("[NETWORK] Falling back to standard multi-channel association...\n");
+                printf("[NETWORK] Hotspot '%s' not found, try default connect\n", CFG_WIFI_SSID);
             }
 
-            // 3. 清理已有的 netId，防止底层配置表溢出
             if (netId >= 0) {
                 RemoveDevice(netId);
                 netId = -1;
@@ -315,34 +306,32 @@ static void NetworkTask(void *arg)
 
             WifiErrorCode addErr = AddDeviceConfig(&apConfig, &netId);
             if (addErr != WIFI_SUCCESS || netId < 0) {
-                printf("[NETWORK] AddDeviceConfig failed! err=%d, retrying...\n", addErr);
+                printf("[NETWORK] AddDeviceConfig failed! err=%d\n", addErr);
                 osDelay(300);
                 continue;
             }
 
-            printf("[NETWORK] Connecting to AP '%s' (netId=%d, freq=%u MHz)...\n",
-                   CFG_WIFI_SSID, netId, apConfig.freq);
+            printf("[NETWORK] Connecting to '%s' (netId=%d)...\n", CFG_WIFI_SSID, netId);
             ConnectTo(netId);
 
-            // 4. 等待底层 AP 连接握手（最多等待 10 秒）
+            // 等待连接
             for (int i = 0; i < 100 && !g_wifi_connected; i++) {
                 osDelay(10); // 100ms
             }
 
             if (g_wifi_connected) {
-                printf("[NETWORK] AP Associated! Requesting DHCP IP address...\n");
+                printf("[NETWORK] Connected, requesting DHCP...\n");
                 g_iface = netifapi_netif_find("wlan0");
                 if (g_iface != NULL) {
-                    // 彻底停止前次可能遗留的 DHCP 会话
                     netifapi_dhcp_stop(g_iface);
-                    osDelay(10); // 100ms
+                    osDelay(10);
 
                     netifapi_dhcp_start(g_iface);
 
-                    // 轮询检查 DHCP 是否完成绑定（最多等待 15 秒）
+                    // 检查DHCP是否成功
                     int dhcp_ok = 0;
                     for (int t = 0; t < 150; t++) {
-                        osDelay(10); // 100ms
+                        osDelay(10);
                         if (netifapi_dhcp_is_bound(g_iface) == ERR_OK) {
                             if (netif_ip4_addr(g_iface)->addr != 0) {
                                 dhcp_ok = 1;
@@ -352,17 +341,13 @@ static void NetworkTask(void *arg)
                     }
 
                     if (dhcp_ok) {
-                        printf("\n[NETWORK] >>> DHCP SUCCESS! <<<\n");
-                        printf("[NETWORK] Board IP: %s\n", ip4addr_ntoa(netif_ip4_addr(g_iface)));
-                        printf("[NETWORK] Netmask : %s\n", ip4addr_ntoa(netif_ip4_netmask(g_iface)));
-                        printf("[NETWORK] Gateway : %s\n", ip4addr_ntoa(netif_ip4_gw(g_iface)));
-                        printf("[NETWORK] System Ready for Untethered Independent Power Operation!\n\n");
+                        printf("\n[NETWORK] DHCP Success! IP: %s\n\n", ip4addr_ntoa(netif_ip4_addr(g_iface)));
                         g_network_ready = 1;
 
-                        // 补传断网期间积压的传感器数据
+                        // 补传离线数据
                         NetworkServiceFlushCache();
                     } else {
-                        printf("[NETWORK] [WARN] DHCP timeout! IP not assigned by hotspot.\n");
+                        printf("[NETWORK] DHCP timeout\n");
                         netifapi_dhcp_stop(g_iface);
                         Disconnect();
                         g_wifi_connected = 0;
@@ -372,19 +357,17 @@ static void NetworkTask(void *arg)
                     }
                 }
             } else {
-                printf("[NETWORK] Wi-Fi AP connect timeout. Running in Local Offline Edge mode.\n");
-                printf("[NETWORK] (Local safety & alarms 100%% active. Next Wi-Fi retry in 5s)\n");
+                printf("[NETWORK] Connect timeout, retry in 5s\n");
                 if (netId >= 0) {
                     RemoveDevice(netId);
                     netId = -1;
                 }
-                osDelay(500); // 离线等待 5 秒再重试
+                osDelay(500);
                 continue;
             }
         } else {
-            // 在线状态：检测底层 DHCP 状态是否保持
             if (g_iface != NULL && netifapi_dhcp_is_bound(g_iface) != ERR_OK) {
-                printf("[NETWORK] DHCP link lost bound state! Re-initiating connect...\n");
+                printf("[NETWORK] DHCP lost, reconnecting...\n");
                 g_network_ready = 0;
                 g_wifi_connected = 0;
                 netifapi_dhcp_stop(g_iface);
@@ -392,11 +375,10 @@ static void NetworkTask(void *arg)
                 continue;
             }
 
-            // 在线状态：若有积压缓存，尝试补发
             if (g_network_ready && g_cache_count > 0) {
                 NetworkServiceFlushCache();
             }
-            osDelay(100); // 1秒心跳巡检
+            osDelay(100);
         }
     }
 }

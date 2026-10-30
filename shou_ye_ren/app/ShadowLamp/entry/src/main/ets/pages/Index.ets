@@ -72,9 +72,7 @@ struct Index {
   }
 
   /**
-   * 前台告警提醒：3 秒轮询一次待确认列表，
-   * 只有“出现更高等级”或“数量变多”才震动/响提示音，避免把提示音刷成噪音。
-   * 说明：不是推送，APP 退到后台后不会响——这一点在答辩时会如实讲。
+   * 轮询检查待确认告警并触发提醒
    */
   private async watchAlarms(): Promise<void> {
     const list: AlarmEvent[] | null = await ApiClient.alarms('pending');

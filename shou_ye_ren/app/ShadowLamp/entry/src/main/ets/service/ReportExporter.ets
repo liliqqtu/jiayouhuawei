@@ -1,13 +1,5 @@
 /**
- * 报告长图导出：PixelMap -> PNG -> 相册 / 系统分享。
- *
- * 设计说明（评审/答辩可能会问）：
- * 1. 截图用 componentSnapshot.createFromBuilder 离屏渲染，不依赖“页面当前可见”；
- *    这样长图能一次渲染出标题 + 图表 + 落款，不受滚动视口裁剪。
- * 2. 相册写入走 PhotoAccessHelper：先申请 ohos.permission.WRITE_IMAGEVIDEO，
- *    被拒时退回 showAssetsCreationDialog（由用户在系统弹窗确认，无需权限），
- *    两条路都失败才提示“去设置里开启”。
- * 3. 分享走系统 ShareKit（分享面板由系统绘制），不经过网络，老人数据不出家门。
+ * 报告长图导出：PixelMap -> PNG -> 相册 / 系统分享
  */
 import { abilityAccessCtrl, common, Permissions, Want } from '@kit.AbilityKit';
 import { fileIo, fileUri } from '@kit.CoreFileKit';

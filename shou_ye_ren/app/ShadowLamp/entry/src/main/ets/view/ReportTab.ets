@@ -797,7 +797,7 @@ export struct ReportTab {
           .borderRadius(Theme.radius)
           .border({ width: 1, color: Theme.line })
 
-          // 月报（赛题四功能 5 明确要求“周/月报告”，月报此前只有后端接口）
+          // 月度报告概览
           Column() {
             Row() {
               Text('月度概览').fontSize(Theme.fs(13, this.largeFont)).fontColor(Theme.muted)

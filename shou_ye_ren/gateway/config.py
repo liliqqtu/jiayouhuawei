@@ -1,12 +1,5 @@
 # -*- coding: utf-8 -*-
-"""网关配置与可下发阈值。
-
-兼容性：本工程面向 Python 3.8（与 DevEco Device Tool 要求的 3.7.4~3.8 一致），
-不使用 3.9+ 的语法与运行期泛型。
-
-阈值全部是“项目演示参数”，不是医疗或行业标准——算法、界面、设计文档中
-必须保持同一口径，避免把演示阈值包装成权威判断。
-"""
+"""网关配置与告警阈值定义。"""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, fields
@@ -16,26 +9,23 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8780
 DEFAULT_DB = "data/gateway.db"
 
-# 设备心跳超过该秒数即视为离线（固件 1 秒一帧，留出 3 倍冗余）
+# 设备心跳超过该秒数即视为离线
 OFFLINE_SECONDS = 10
 
-# 补传数据允许的乱序窗口（秒）：超出窗口只入库，不参与实时判定，
-# 避免“用一小时前的快照触发现场告警”这种荒谬结果。
+# 补传数据允许的乱序窗口（秒）
 BACKFILL_WINDOW_SECONDS = 300
 
-# 设备端可直接上报、由网关直接建单的事件类型（无需再算阈值）
+# 设备端直接上报的事件
 DIRECT_EVENT_TYPES = ("SOS", "GAS", "SMOKE")
 
-# 板端本地阈值判定上报的事件类型，名字与 firmware/local_rule.c 的
-# Loc_KindAlarmType() 一一对应。板端只做“单指标 + 时间窗”，属于快反；
-# 真正建单仍要过网关的冷却去重，避免同一件事被板端反复报成十几条。
+# 板端本地判定事件
 BOARD_EVENT_TYPES = (
     "TEMP_FIRE", "TEMP_RISE", "TEMP_HIGH", "TEMP_LOW",
     "HUM_HIGH", "HUM_LOW", "DOOR_OPEN",
     "TEMP_WARM", "HUM_WARN_HIGH", "HUM_WARN_LOW",
 )
 
-# 紧急危急生命安全告警：零冷却间隔，绝不抑制！只要事件触发，随时立即报警建单！
+# 紧急事件不加冷却间隔，立即上报
 ZERO_COOLDOWN_TYPES = (
     "SOS", "FALL", "FALL_DOWN", "GAS", "SMOKE", "TEMP_FIRE", "TEMP_RISE", "NO_MOTION"
 )

@@ -330,7 +330,7 @@ export struct AlarmTab {
     .padding({ top: 7, bottom: 7 })
   }
 
-  /** 证据链：触发那一刻的读数，答辩时用来对账“凭什么判它” */
+  /** 触发告警时的传感器数据 */
   @Builder
   evidenceBlock(item: AlarmEvent) {
     Column() {

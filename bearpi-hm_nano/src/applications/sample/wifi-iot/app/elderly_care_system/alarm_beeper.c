@@ -100,7 +100,7 @@ void AlarmBeeperTick(uint32_t tick_step_ms)
     g_pattern_tick += tick_step_ms;
 
     if (g_current_level == ALERT_LEVEL_NORMAL) {
-        // 正常安全模式: 2000ms 一个周期，LED 短闪 100ms (心跳指示)
+        // 正常心跳：2秒周期，LED闪100ms
         uint32_t cycle = g_pattern_tick % 2000;
         if (cycle < 100) {
             LedOn();
@@ -110,7 +110,7 @@ void AlarmBeeperTick(uint32_t tick_step_ms)
         BeeperOff();
     }
     else if (g_current_level == ALERT_LEVEL_WARNING) {
-        // 预警模式 (如门长开): 1500ms 周期，LED 双闪，蜂鸣器在前半段短鸣两声
+        // 预警模式：LED双闪+间歇蜂鸣
         uint32_t cycle = g_pattern_tick % 1500;
         if (cycle < 120 || (cycle >= 240 && cycle < 360)) {
             LedOn();
@@ -122,7 +122,7 @@ void AlarmBeeperTick(uint32_t tick_step_ms)
         }
     }
     else if (g_current_level == ALERT_LEVEL_CRITICAL) {
-        // 严重告警模式 (SOS 或 摔倒/超时无活动): 400ms 急促周期，急促连环啸叫爆闪
+        // 紧急模式：快速闪烁+蜂鸣
         uint32_t cycle = g_pattern_tick % 400;
         if (cycle < 200) {
             LedOn();

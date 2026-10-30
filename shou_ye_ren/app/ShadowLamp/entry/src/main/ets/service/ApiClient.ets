@@ -1,10 +1,7 @@
 /**
  * 网络层 + 本地设置。
  *
- * 约定：
- *  - 所有请求失败都返回 null / false，由页面显示“连接失败”，不弹异常；
- *  - 网关地址保存在 preferences 中，换 WiFi 后可在“我的”页改；
- *  - 不做任何缓存伪装：拿不到数据就显示“离线”，不展示旧值。
+ * 接口请求与本地参数保存
  */
 import { http } from '@kit.NetworkKit';
 import { preferences } from '@kit.ArkData';

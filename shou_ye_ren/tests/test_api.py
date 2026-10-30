@@ -348,7 +348,7 @@ class ApiTestCase(unittest.TestCase):
 
     # ------------------------------------------------------- Web 看板
     def test_25_dashboard_page(self):
-        """根路径返回看板 HTML：评委不装 APP 也能在浏览器里看状态。"""
+        """根路径返回看板 HTML 页面。"""
         url = self.base + "/"
         with request.urlopen(url, timeout=5) as resp:
             self.assertEqual(200, resp.status)

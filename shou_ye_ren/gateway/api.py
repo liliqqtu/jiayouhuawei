@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""HTTP API 层：路由 + 参数校验 + 业务组装。
-
-接口清单与《需求符合性矩阵》04 表一致；实现上只依赖标准库。
-错误统一返回 {code, message}，状态非法迁移返回 409。
-"""
+"""HTTP API 接口定义。"""
 from __future__ import annotations
 
 import re

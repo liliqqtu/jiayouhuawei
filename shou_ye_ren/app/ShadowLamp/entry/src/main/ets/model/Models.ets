@@ -1,6 +1,5 @@
 /**
- * 数据模型 + 展示转换。
- * 字段与《需求符合性矩阵》05 表严格一致；未知值一律 null，不用 0 伪装。
+ * 数据模型定义
  */
 
 export interface ActiveAlarm {
@@ -49,10 +48,7 @@ export interface AlarmEvent {
   zone: string | null;
   source: string;
   escalated: boolean;
-  /**
-   * 证据：触发那一刻的传感器读数（网关写入的 JSON 字符串，可能为 null）。
-   * 详情页用它还原“当时到底多少度、门是不是开着”，答辩时可以直接对账。
-   */
+  /** 触发告警时的传感器数值快照 */
   evidence?: string | null;
   /** 告警入网时间（网关落库时刻），时间线里区分“触发”与“升级”用 */
   createdTs?: string | null;
@@ -174,12 +170,7 @@ export function statusLabel(status: string): string {
   return '已关闭';
 }
 
-/**
- * 来源只有两类（需求硬性规定）：
- *   hardware —— 真实硬件采集
- *   test     —— 模拟 / 按键演示 / 测试数据
- * 兼容早期报文里的 real / key_sim，但绝不把 test 显示成真实。
- */
+/** 来源标签转换 */
 export function sourceLabel(source: string): string {
   if (source === 'hardware' || source === 'real') {
     return '真实硬件';

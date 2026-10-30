@@ -835,7 +835,7 @@ export struct MineTab {
               .fontSize(Theme.fs(12, this.largeFont))
               .fontColor(Theme.slate)
               .width('100%')
-            Text('赛题四 · 南北结合软硬件开发类 · v1.0.0')
+            Text('OpenHarmony 独居老人居家安全守护 · v1.0.0')
               .fontSize(Theme.fs(11, this.largeFont))
               .fontColor(Theme.muted)
               .width('100%')

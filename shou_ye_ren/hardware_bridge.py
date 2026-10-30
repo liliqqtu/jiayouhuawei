@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-河南省信息技术应用创新大赛（开源鸿蒙） - 赛题四
-小熊派硬件数据 (CH340 / COM7) -> 守夜人网关 (8780) -> 手机鸿蒙 APP 实时桥接器
+小熊派串口数据同步桥接器
 """
 
 import sys
@@ -107,15 +106,11 @@ def find_bearpi_port():
     return None
 
 def main():
-    print("=" * 68)
-    print("  独居老人居家安全系统 · 硬件数据中枢与双模通信守护")
-    print("=" * 68)
-    print("  【供电与传输模式说明】:")
-    print("   1. 充电宝独立供电: 硬件通过无线 Wi-Fi 直连电脑 (UDP:9999)")
-    print("      -> 本窗口无需任何操作，可直接最小化，网关后台已在实时监听！")
-    print("   2. USB 数据线模式: 硬件插在电脑 USB 口上时，自动通过 COM 串口接收。")
-    print("   【纯真实硬件保障】: 已彻底清空并禁用任何模拟数据，只采真实硬件！")
-    print("=" * 68)
+    print("=" * 60)
+    print("  小熊派硬件同步桥接器已启动")
+    print("  - 独立供电模式: Wi-Fi UDP 接收")
+    print("  - USB 串口模式: 自动检测 CH340")
+    print("=" * 60)
 
     target_port = find_bearpi_port()
     ser = None
