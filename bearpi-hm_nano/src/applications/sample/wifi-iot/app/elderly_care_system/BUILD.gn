@@ -7,6 +7,7 @@ static_library("elderly_care_app") {
         "sensor_door.c",
         "emergency_sos.c",
         "sensor_environment.c",
+        "voice_syn6288.c",
         "network_service.c",
         "elderly_care_main.c",
     ]

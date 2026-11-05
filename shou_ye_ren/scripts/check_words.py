@@ -29,6 +29,14 @@ EXTS = (".ets", ".ts", ".js", ".py", ".c", ".h", ".json", ".json5",
 SKIP_DIRS = {"node_modules", "build", ".git", "__pycache__", "oh_modules",
              ".hvigor", "data", ".idea", "dist", "cache"}
 
+# 豁免文件：这些材料必须“引用”禁词才能说明口径（问答口径/追问台词/用词修复脚本）。
+# 只豁免相对 software/ 的路径，新增材料往这里加，并在文档里说明用途。
+EXEMPT = {
+    os.path.join("docs", chr(0x5357) + chr(0x5411) + chr(0x56FA) + chr(0x4EF6) + chr(0x95EE) + chr(0x7B54) + chr(0x53E3) + chr(0x5F84) + "_20261029.md"),
+    os.path.join("docs", "评委追问10连_台词版.md"),
+    os.path.join("scripts", "fix_board_words.py"),
+}
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -48,7 +56,12 @@ def main():
 
     hits = []
     scanned = 0
+    skipped = []
     for path in walk(args.path):
+        rel = os.path.relpath(path, args.path)
+        if rel in EXEMPT:
+            skipped.append(rel)
+            continue
         scanned += 1
         try:
             text = io.open(path, encoding="utf-8").read()
@@ -62,6 +75,8 @@ def main():
                                      line.strip()[:90]))
 
     print("扫描 %d 个文件，禁词命中 %d 处" % (scanned, len(hits)))
+    if skipped:
+        print("  豁免（需引用禁词说明口径）：" + "、".join(skipped))
     if hits:
         for rel, lineno, why, line in hits:
             print("  %s:%d  (%s)" % (rel, lineno, why))

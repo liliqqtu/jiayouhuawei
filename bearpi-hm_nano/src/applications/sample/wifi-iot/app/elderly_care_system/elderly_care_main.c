@@ -15,6 +15,7 @@
 #include "emergency_sos.h"
 #include "sensor_environment.h"
 #include "network_service.h"
+#include "voice_syn6288.h"
 
 #define TASK_STACK_SIZE     (1024 * 8)
 #define TASK_PRIORITY       osPriorityNormal
@@ -43,11 +44,22 @@ static void ElderlyCareTask(void *arg)
     SensorDoorInit();
     EmergencySosInit();
     SensorEnvironmentInit();
+    VoiceSyn6288Init();
     NetworkServiceInit();
+
+    // 延时约 500ms 等待 SYN6288 芯片上电复位和内部 DSP 引擎稳定就绪
+    osDelay(50);
+
+    // 开机就绪专属语音播报
+    VoicePlayPresetAlert(VOICE_ALERT_BOOT);
 
     memset(&g_care_data, 0, sizeof(g_care_data));
     g_care_data.current_level = ALERT_LEVEL_NORMAL;
     g_care_data.current_alert = ALERT_TYPE_NONE;
+    g_care_data.voice_volume = VoiceGetVolume();
+
+    alert_type_t last_voice_alert = ALERT_TYPE_NONE;
+    uint32_t voice_repeat_sec = 0;
 
     while (1) {
         // 50ms按键和声光刷新
@@ -74,6 +86,7 @@ static void ElderlyCareTask(void *arg)
 
             g_care_data.sos_active = EmergencySosIsActive();
             SensorEnvironmentRead(&g_care_data.temperature, &g_care_data.humidity);
+            g_care_data.voice_volume = VoiceGetVolume();
 
             // 报警状态判定
             alert_level_t new_level = ALERT_LEVEL_NORMAL;
@@ -109,6 +122,42 @@ static void ElderlyCareTask(void *arg)
                 new_alert = ALERT_TYPE_NONE;
             }
 
+            // 语音播报状态机联动 (全部分配专属适老化预置语音)
+            if (new_alert != last_voice_alert) {
+                voice_repeat_sec = 0;
+                if (new_alert == ALERT_TYPE_SOS) {
+                    VoicePlayPresetAlert(VOICE_ALERT_SOS);
+                } else if (new_alert == ALERT_TYPE_NO_MOTION) {
+                    VoicePlayPresetAlert(VOICE_ALERT_NO_MOTION);
+                } else if (new_alert == ALERT_TYPE_DOOR_TIMEOUT) {
+                    VoicePlayPresetAlert(VOICE_ALERT_DOOR_TIMEOUT);
+                } else if (new_alert == ALERT_TYPE_TEMP_HIGH) {
+                    VoicePlayPresetAlert(VOICE_ALERT_TEMP_HIGH);
+                } else if (new_alert == ALERT_TYPE_TEMP_LOW) {
+                    VoicePlayPresetAlert(VOICE_ALERT_TEMP_LOW);
+                } else if (new_alert == ALERT_TYPE_SMOKE) {
+                    VoicePlayPresetAlert(VOICE_ALERT_SMOKE);
+                } else if (new_alert == ALERT_TYPE_NONE && last_voice_alert != ALERT_TYPE_NONE) {
+                    VoicePlayPresetAlert(VOICE_ALERT_CLEAR);
+                }
+                last_voice_alert = new_alert;
+            } else if (new_level == ALERT_LEVEL_CRITICAL) {
+                // 严重告警每 25 秒温和复播一次
+                voice_repeat_sec++;
+                if (voice_repeat_sec >= 25) {
+                    voice_repeat_sec = 0;
+                    if (new_alert == ALERT_TYPE_SOS) {
+                        VoicePlayPresetAlert(VOICE_ALERT_SOS_REPEAT);
+                    } else if (new_alert == ALERT_TYPE_NO_MOTION) {
+                        VoicePlayPresetAlert(VOICE_ALERT_NO_MOTION);
+                    } else if (new_alert == ALERT_TYPE_SMOKE) {
+                        VoicePlayPresetAlert(VOICE_ALERT_SMOKE);
+                    }
+                }
+            } else {
+                voice_repeat_sec = 0;
+            }
+
             g_care_data.current_level = new_level;
             g_care_data.current_alert = new_alert;
             AlarmBeeperSetMode(new_level, new_alert);
@@ -117,7 +166,7 @@ static void ElderlyCareTask(void *arg)
             char telemetry_buf[256];
             snprintf(telemetry_buf, sizeof(telemetry_buf),
                      "{\"type\":\"telemetry\",\"deviceId\":\"bearpi-001\",\"uptime\":%u,\"motion\":%u,\"no_motion_sec\":%u,"
-                     "\"door\":%u,\"door_sec\":%u,\"temp\":%.1f,\"humi\":%.1f,\"sos\":%u,"
+                     "\"door\":%u,\"door_sec\":%u,\"temp\":%.1f,\"humi\":%.1f,\"sos\":%u,\"vol\":%u,"
                      "\"alert\":%u,\"level\":%u,\"count\":%u}",
                      g_care_data.uptime_seconds,
                      g_care_data.motion_active,
@@ -127,6 +176,7 @@ static void ElderlyCareTask(void *arg)
                      g_care_data.temperature,
                      g_care_data.humidity,
                      g_care_data.sos_active,
+                     (uint32_t)g_care_data.voice_volume,
                      (uint32_t)g_care_data.current_alert,
                      (uint32_t)g_care_data.current_level,
                      g_care_data.motion_events_today);

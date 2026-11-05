@@ -49,6 +49,16 @@ int NetworkServiceFlushCache(void);
  */
 int NetworkServiceGetCacheCount(void);
 
+/**
+ * @brief 处理局域网或串口接收到的控制指令 (如音量调节、状态查询)
+ * @param cmd_str 待解析的指令字符串 (支持 JSON 或 键值对)
+ * @param cmd_len 字符串长度
+ * @param ack_buf 输出 ACK 应答缓冲 (可为 NULL)
+ * @param ack_buf_size 输出缓冲大小
+ * @return 0 成功处理，负数未识别或参数错误
+ */
+int NetworkServiceProcessCommand(const char *cmd_str, int cmd_len, char *ack_buf, int ack_buf_size);
+
 #ifdef __cplusplus
 }
 #endif

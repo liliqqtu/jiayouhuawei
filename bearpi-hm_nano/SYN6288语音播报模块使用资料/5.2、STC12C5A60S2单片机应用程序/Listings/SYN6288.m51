@@ -1,0 +1,255 @@
+BL51 BANKED LINKER/LOCATER V6.22                                                        04/25/2020  20:43:41  PAGE 1
+
+
+BL51 BANKED LINKER/LOCATER V6.22, INVOKED BY:
+D:\PROGRAM FILES\KEIL 51\C51\BIN\BL51.EXE .\Objects\main.obj TO .\Objects\SYN6288 PRINT (.\Listings\SYN6288.m51) RAMSIZE
+>>  (256)
+
+
+MEMORY MODEL: LARGE
+
+
+INPUT MODULES INCLUDED:
+  .\Objects\main.obj (MAIN)
+  D:\PROGRAM FILES\KEIL 51\C51\LIB\C51L.LIB (?C_STARTUP)
+  D:\PROGRAM FILES\KEIL 51\C51\LIB\C51L.LIB (?C?COPY)
+  D:\PROGRAM FILES\KEIL 51\C51\LIB\C51L.LIB (?C?CLDPTR)
+  D:\PROGRAM FILES\KEIL 51\C51\LIB\C51L.LIB (?C?CLDOPTR)
+  D:\PROGRAM FILES\KEIL 51\C51\LIB\C51L.LIB (?C?ILDIX)
+  D:\PROGRAM FILES\KEIL 51\C51\LIB\C51L.LIB (STRLEN)
+  D:\PROGRAM FILES\KEIL 51\C51\LIB\C51L.LIB (?C_INIT)
+
+
+LINK MAP OF MODULE:  .\Objects\SYN6288 (MAIN)
+
+
+            TYPE    BASE      LENGTH    RELOCATION   SEGMENT NAME
+            -----------------------------------------------------
+
+            * * * * * * *   D A T A   M E M O R Y   * * * * * * *
+            REG     0000H     0008H     ABSOLUTE     "REG BANK 0"
+            IDATA   0008H     0001H     UNIT         ?STACK
+
+            * * * * * * *  X D A T A   M E M O R Y  * * * * * * *
+            XDATA   0000H     003BH     UNIT         _XDATA_GROUP_
+            XDATA   003BH     0019H     UNIT         ?XD?MAIN
+            XDATA   0054H     0003H     UNIT         ?XD?_YS_SYN_SET?MAIN
+
+            * * * * * * *   C O D E   M E M O R Y   * * * * * * *
+            CODE    0000H     0003H     ABSOLUTE     
+            CODE    0003H     002EH     UNIT         ?CO?MAIN
+            CODE    0031H     000DH     UNIT         ?PR?UART2_ISR?MAIN
+                    003EH     0005H                  *** GAP ***
+            CODE    0043H     0003H     ABSOLUTE     
+            CODE    0046H     0152H     UNIT         ?C?LIB_CODE
+            CODE    0198H     00D1H     UNIT         ?PR?_SYN_FRAMEINFO?MAIN
+            CODE    0269H     008CH     UNIT         ?C_C51STARTUP
+            CODE    02F5H     002DH     UNIT         ?PR?_UART2_SENDSTRING?MAIN
+            CODE    0322H     0029H     UNIT         ?C_INITSEG
+            CODE    034BH     0020H     UNIT         ?PR?_DELAY?MAIN
+            CODE    036BH     001EH     UNIT         ?PR?_YS_SYN_SET?MAIN
+            CODE    0389H     0017H     UNIT         ?PR?MAIN?MAIN
+            CODE    03A0H     0015H     UNIT         ?PR?_STRLEN?STRLEN
+            CODE    03B5H     0014H     UNIT         ?PR?UART2_INIT?MAIN
+            CODE    03C9H     000BH     UNIT         ?PR?_UART2_SENDBYTE?MAIN
+
+
+
+OVERLAY MAP OF MODULE:   .\Objects\SYN6288 (MAIN)
+
+
+SEGMENT                              XDATA_GROUP
+BL51 BANKED LINKER/LOCATER V6.22                                                      04/25/2020  20:43:41  PAGE 2
+
+
+  +--> CALLED SEGMENT              START    LENGTH
+--------------------------------------------------
+?C_C51STARTUP                      -----    -----
+  +--> ?PR?MAIN?MAIN
+  +--> ?C_INITSEG
+
+?PR?MAIN?MAIN                      -----    -----
+  +--> ?PR?UART2_INIT?MAIN
+  +--> ?CO?MAIN
+  +--> ?PR?_SYN_FRAMEINFO?MAIN
+  +--> ?PR?_DELAY?MAIN
+
+?PR?_SYN_FRAMEINFO?MAIN            0000H    0038H
+  +--> ?PR?_STRLEN?STRLEN
+  +--> ?PR?_UART2_SENDSTRING?MAIN
+
+?PR?_UART2_SENDSTRING?MAIN         0038H    0003H
+  +--> ?PR?_UART2_SENDBYTE?MAIN
+
+
+
+SYMBOL TABLE OF MODULE:  .\Objects\SYN6288 (MAIN)
+
+  VALUE           TYPE          NAME
+  ----------------------------------
+
+  -------         MODULE        MAIN
+  C:0000H         SYMBOL        _ICE_DUMMY_
+  B:00A8H.7       PUBLIC        EA
+  C:034BH         PUBLIC        _delay
+  C:036BH         PUBLIC        _YS_SYN_Set
+  B:00A8H.4       PUBLIC        ES
+  X:003BH         PUBLIC        SYN_StopCom
+  C:0389H         PUBLIC        main
+  X:0040H         PUBLIC        SYN_PowerDownCom
+  D:008EH         PUBLIC        AUXR
+  C:03B5H         PUBLIC        Uart2_Init
+  X:0045H         PUBLIC        SYN_RecoverCom
+  C:0198H         PUBLIC        _SYN_FrameInfo
+  C:02F5H         PUBLIC        _UART2_SendString
+  X:004AH         PUBLIC        SYN_ChackCom
+  C:0031H         PUBLIC        Uart2_Isr
+  X:004FH         PUBLIC        SYN_SuspendCom
+  D:009BH         PUBLIC        S2BUF
+  D:009AH         PUBLIC        S2CON
+  D:009CH         PUBLIC        BRT
+  C:03C9H         PUBLIC        _UART2_SendByte
+  -------         PROC          UART2_INIT
+  C:03B5H         LINE#         43
+  C:03B5H         LINE#         44
+  C:03B5H         LINE#         45
+  C:03B8H         LINE#         46
+  C:03BBH         LINE#         47
+  C:03BEH         LINE#         48
+  C:03C1H         LINE#         49
+  C:03C4H         LINE#         50
+  C:03C6H         LINE#         51
+BL51 BANKED LINKER/LOCATER V6.22                                                      04/25/2020  20:43:41  PAGE 3
+
+
+  C:03C8H         LINE#         52
+  -------         ENDPROC       UART2_INIT
+  -------         PROC          _UART2_SENDBYTE
+  D:0007H         SYMBOL        DAT
+  C:03C9H         LINE#         55
+  C:03C9H         LINE#         56
+  C:03C9H         LINE#         57
+  C:03CBH         LINE#         58
+  C:03D0H         LINE#         59
+  C:03D3H         LINE#         60
+  -------         ENDPROC       _UART2_SENDBYTE
+  -------         PROC          _UART2_SENDSTRING
+  X:0038H         SYMBOL        DAT
+  D:0005H         SYMBOL        len
+  -------         DO            
+  D:0006H         SYMBOL        i
+  -------         ENDDO         
+  C:02F5H         LINE#         63
+  C:0300H         LINE#         64
+  C:0300H         LINE#         66
+  C:0307H         LINE#         67
+  C:0307H         LINE#         68
+  C:031EH         LINE#         69
+  C:0321H         LINE#         70
+  -------         ENDPROC       _UART2_SENDSTRING
+  -------         PROC          UART2_ISR
+  C:0031H         LINE#         73
+  C:0033H         LINE#         75
+  C:0038H         LINE#         76
+  C:0038H         LINE#         77
+  C:003BH         LINE#         78
+  C:003BH         LINE#         80
+  -------         ENDPROC       UART2_ISR
+  -------         PROC          _SYN_FRAMEINFO
+  X:0000H         SYMBOL        Music
+  X:0001H         SYMBOL        HZdata
+  -------         DO            
+  X:0004H         SYMBOL        Frame_Info
+  X:0036H         SYMBOL        HZ_Length
+  X:0037H         SYMBOL        ecc
+  D:0004H         SYMBOL        i
+  -------         ENDDO         
+  C:0198H         LINE#         84
+  C:01A6H         LINE#         85
+  C:01A6H         LINE#         89
+  C:01ABH         LINE#         90
+  C:01ADH         LINE#         91
+  C:01B5H         LINE#         94
+  C:01BBH         LINE#         95
+  C:01BEH         LINE#         96
+  C:01C3H         LINE#         97
+  C:01C7H         LINE#         98
+  C:01D4H         LINE#         101
+  C:01D7H         LINE#         102
+  C:01D7H         LINE#         103
+  C:01EEH         LINE#         104
+  C:01F9H         LINE#         106
+BL51 BANKED LINKER/LOCATER V6.22                                                      04/25/2020  20:43:41  PAGE 4
+
+
+  C:0209H         LINE#         107
+  C:0209H         LINE#         108
+  C:0225H         LINE#         109
+  C:022CH         LINE#         111
+  C:0247H         LINE#         112
+  C:025CH         LINE#         113
+  -------         ENDPROC       _SYN_FRAMEINFO
+  -------         PROC          _YS_SYN_SET
+  X:0054H         SYMBOL        Info_data
+  -------         DO            
+  D:0007H         SYMBOL        Com_Len
+  -------         ENDDO         
+  C:036BH         LINE#         125
+  C:0376H         LINE#         126
+  C:0376H         LINE#         128
+  C:0379H         LINE#         129
+  -------         ENDPROC       _YS_SYN_SET
+  -------         PROC          _DELAY
+  D:0006H         SYMBOL        uldata
+  -------         DO            
+  D:0004H         SYMBOL        j
+  D:0002H         SYMBOL        g
+  -------         ENDDO         
+  C:034BH         LINE#         133
+  C:034BH         LINE#         134
+  C:034BH         LINE#         135
+  C:034EH         LINE#         136
+  C:034EH         LINE#         137
+  C:0355H         LINE#         138
+  C:036AH         LINE#         139
+  -------         ENDPROC       _DELAY
+  -------         PROC          MAIN
+  C:0389H         LINE#         142
+  C:0389H         LINE#         143
+  C:0389H         LINE#         144
+  C:038CH         LINE#         145
+  C:038CH         LINE#         146
+  C:038CH         LINE#         152
+  C:0397H         LINE#         155
+  C:039EH         LINE#         156
+  -------         ENDPROC       MAIN
+  -------         ENDMOD        MAIN
+
+  -------         MODULE        ?C?COPY
+  C:0116H         PUBLIC        ?C?COPY
+  -------         ENDMOD        ?C?COPY
+
+  -------         MODULE        ?C?CLDPTR
+  C:013CH         PUBLIC        ?C?CLDPTR
+  -------         ENDMOD        ?C?CLDPTR
+
+  -------         MODULE        ?C?CLDOPTR
+  C:0155H         PUBLIC        ?C?CLDOPTR
+  -------         ENDMOD        ?C?CLDOPTR
+
+  -------         MODULE        ?C?ILDIX
+  C:0182H         PUBLIC        ?C?ILDIX
+BL51 BANKED LINKER/LOCATER V6.22                                                      04/25/2020  20:43:41  PAGE 5
+
+
+  -------         ENDMOD        ?C?ILDIX
+
+  -------         MODULE        STRLEN
+  C:03A0H         PUBLIC        _STRLEN
+  -------         ENDMOD        STRLEN
+
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_YS_SYN_SET?MAIN
+
+Program Size: data=9.0 xdata=87 code=975
+LINK/LOCATE RUN COMPLETE.  1 WARNING(S),  0 ERROR(S)

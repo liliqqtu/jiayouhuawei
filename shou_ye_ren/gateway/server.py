@@ -11,6 +11,7 @@ import json
 import socket
 import sys
 import threading
+import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -59,6 +60,9 @@ class SirenThread(threading.Thread):
             self.wavs = siren_wav.build()
         except Exception:
             self.wavs = {}
+        # 语音模块去重：同一条告警只播一次（SOS 播“我需要帮助”，不跟着警笛循环重复）
+        self._voice_last_event = None
+        self._voice_last_at = 0.0
         self.looping = False
 
     # ---------------- 声音 ----------------
@@ -93,9 +97,20 @@ class SirenThread(threading.Thread):
         siren_wav.stop()
         self.looping = False
 
-    def _speak(self, level, message):
+    def _speak(self, level, message, alarm_type=None, event_id=None):
         """语音播报：后台进程播放，失败/超时都不拖住警笛循环。"""
         if not getattr(self.api, "voice", False):
+            return
+        module = getattr(self.api, "voice_module", None)
+        if module is not None:
+            # 已接语音模块：按告警类型播预设语音；同一条告警 2 分钟内不重复播
+            now = time.time()
+            if (event_id and event_id == self._voice_last_event
+                    and now - self._voice_last_at < 120):
+                return
+            self._voice_last_event = event_id
+            self._voice_last_at = now
+            module.play(alarm_type or "", message)
             return
         prefix = {
             "L3": "紧急告警，",
@@ -214,7 +229,7 @@ class SirenThread(threading.Thread):
                 self._silence()
             self.log("[siren] 播报 %s：%s" % (level, alarm["message"]))
             self._pattern(level)
-            self._speak(level, alarm["message"])
+            self._speak(level, alarm["message"], alarm.get("type"), alarm.get("eventId"))
 
             # 以当前最严重那条的等级决定下一轮：先等音效放完，再等间隔
             top_level = pending[0]["level"]
@@ -313,8 +328,6 @@ def port_busy(port, timeout=0.4):
 
 
 class QuietServer(ThreadingHTTPServer):
-    """客户端主动断开（ConnectionReset）不打印堆栈，保持日志干净。"""
-
     def server_bind(self):
         self.server_name = "localhost"
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -348,8 +361,8 @@ def main(argv=None):
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="监听端口，默认 8780")
     parser.add_argument("--db", default=DEFAULT_DB, help="SQLite 路径，默认 data/gateway.db")
     parser.add_argument("--lan", action="store_true", help="监听 0.0.0.0，允许手机/开发板访问")
-    parser.add_argument("--udp-port", type=int, default=9999,
-                        help="同时监听 UDP 端口收 JSON（默认 9999，0=关闭），Wi-Fi 独立供电模式通道")
+    parser.add_argument("--udp-port", type=int, default=0,
+                        help="同时监听 UDP 端口收 JSON（0=关闭），Wi-Fi 直连模式用 9999")
     parser.add_argument("--serial", default="",
                         help="USB 串口桥接模式，例如 COM3；与 --udp-port 可同时启用")
     parser.add_argument("--baud", type=int, default=115200, help="串口波特率")
@@ -357,6 +370,13 @@ def main(argv=None):
                         help="收到新告警时电脑蜂鸣（模拟板端蜂鸣器）")
     parser.add_argument("--voice", action="store_true",
                         help="收到新告警时语音播报（模拟板端语音模块）")
+    parser.add_argument("--voice-backend", default="tts", choices=("log", "tts", "serial"),
+                        help="语音模块后端：log 写日志 / tts 电脑代播 / serial 真串口模块 "
+                             "（默认 tts；接上 BY8301 用 serial 并配 --voice-port）")
+    parser.add_argument("--voice-port", default="",
+                        help="语音模块串口，例如 COM3（serial 后端用）")
+    parser.add_argument("--voice-baud", type=int, default=9600,
+                        help="语音模块串口波特率，默认 9600（BY8301 出厂默认）")
     args = parser.parse_args(argv)
 
     host = "0.0.0.0" if args.lan else args.host
@@ -371,6 +391,13 @@ def main(argv=None):
     server.api = Api(store)
     server.api.siren = args.siren
     server.api.voice = args.voice
+    voice_module = None
+    if args.voice:
+        from gateway.voice_module import VoiceModule
+        voice_module = VoiceModule(backend=args.voice_backend,
+                                   port=(args.voice_port or None),
+                                   baud=args.voice_baud)
+        server.api.voice_module = voice_module
     server.daemon_threads = True
 
     def log(msg):
@@ -407,6 +434,13 @@ def main(argv=None):
     if args.siren:
         print("   播报策略: 只响启动后的新告警（历史待确认不自动响）")
         print("             要立刻播报：python scripts\siren.py on ｜ 静音：siren.py off")
+    if voice_module is not None:
+        print("   语音模块: 后端=%s 串口=%s 波特率=%d"
+              % (voice_module.backend, voice_module.port or "-", voice_module.baud))
+        if voice_module.backend == "log":
+            print("             当前只写日志 data/voice.log（演示/答辩可展示播报记录）")
+        elif voice_module.backend == "tts":
+            print("             用电脑语音代播：SOS -> 我需要帮助")
     if host == "0.0.0.0":
         print("   局域网  : http://%s:%d  （APP 里填这个地址）" % (ip, args.port))
     else:
@@ -421,6 +455,8 @@ def main(argv=None):
     finally:
         for reader in readers:
             reader.stop()
+        if voice_module is not None:
+            voice_module.close()
         server.shutdown()
         server.server_close()
         store.close()

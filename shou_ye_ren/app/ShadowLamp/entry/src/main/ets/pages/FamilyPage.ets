@@ -23,11 +23,22 @@ struct FamilyPage {
   @State dataSource: string = '未知';
   @State sourceIsTest: boolean = true;
   @State confirmLeave: boolean = false;
+  /** 我是不是管理员（户主默认是管理员）：决定要不要显示增删成员的入口 */
+  @State isAdmin: boolean = false;
+  /** 添加成员面板是否展开 */
+  @State showAdd: boolean = false;
+  @State newMemberName: string = '';
+  /** 新成员是否直接设为管理员 */
+  @State newMemberAsAdmin: boolean = false;
+  @State adding: boolean = false;
+  /** 点了“移除”还没确认的那一行：再点一次才真删，防误触 */
+  @State pendingRemoveId: string = '';
 
   aboutToAppear(): void {
     // 先用本地副本渲染，避免网络慢时页面空白
     this.familyName = FamilyStore.familyName;
     this.inviteCode = FamilyStore.inviteCode;
+    this.isAdmin = FamilyStore.isAdmin();
     this.refresh();
     this.loadSource();
   }
@@ -44,6 +55,7 @@ struct FamilyPage {
       this.members = result.info.members;
       this.inviteCode = result.info.inviteCode;
       this.familyName = result.info.familyName;
+      this.syncMyRole(result.info);
       this.tip = '';
     } else if (result.code === 'FAMILY_NOT_FOUND') {
       this.tip = '网关重启过，这个家庭组已重置，请重新创建或加入';
@@ -88,6 +100,84 @@ struct FamilyPage {
     } catch (err) {
       const e = err as BusinessError;
       promptAction.showToast({ message: '跳转失败：' + e.message });
+    }
+  }
+
+  /**
+   * 我的身份以网关成员表为准（本地 role 可能是加入时记的，管理员被降级后要跟着变）。
+   * 名字对不上就沿用本地判断，避免网关数据异常时整页失去管理入口。
+   */
+  private syncMyRole(info: FamilyInfo | null): void {
+    if (info === null) {
+      this.isAdmin = FamilyStore.isAdmin();
+      return;
+    }
+    let matched: boolean = false;
+    for (let i = 0; i < info.members.length; i++) {
+      if (info.members[i].name === FamilyStore.memberName) {
+        this.isAdmin = info.members[i].isAdmin;
+        // 网关可能刚把我提成管理员（或被降级）：本地身份跟着对齐
+        FamilyStore.applyRole(info.members[i].role, info.members[i].memberId);
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      this.isAdmin = FamilyStore.isAdmin();
+    }
+  }
+
+  /** 管理员直接添加成员：填称呼、可选设为管理员 */
+  private async addMember(): Promise<void> {
+    if (this.adding) {
+      return;
+    }
+    const name: string = this.newMemberName.trim();
+    if (name.length === 0) {
+      promptAction.showToast({ message: '先填写成员称呼' });
+      return;
+    }
+    if (name.length > 12) {
+      promptAction.showToast({ message: '成员称呼最长 12 个字' });
+      return;
+    }
+    this.adding = true;
+    const role: string = this.newMemberAsAdmin ? 'admin' : 'guardian';
+    const result: FamilyResult =
+      await ApiClient.familyAddMember(FamilyStore.familyId, FamilyStore.memberName, name, role);
+    this.adding = false;
+    if (result.ok && result.info !== null) {
+      this.family = result.info;
+      this.members = result.info.members;
+      this.newMemberName = '';
+      this.newMemberAsAdmin = false;
+      this.showAdd = false;
+      this.syncMyRole(result.info);
+      promptAction.showToast({ message: '已添加 ' + name });
+    } else {
+      const msg: string = result.message.length > 0 ? result.message : '添加失败，请检查网关连接';
+      promptAction.showToast({ message: msg });
+    }
+  }
+
+  /** 移除成员：第一次点只记下来，第二次点才真删（误触代价太大） */
+  private async removeMember(member: FamilyMember): Promise<void> {
+    if (this.pendingRemoveId !== member.memberId) {
+      this.pendingRemoveId = member.memberId;
+      promptAction.showToast({ message: '再点一次确认移除 ' + member.name });
+      return;
+    }
+    this.pendingRemoveId = '';
+    const result: FamilyResult = await ApiClient.familyRemoveMember(
+      FamilyStore.familyId, FamilyStore.memberName, member.memberId);
+    if (result.ok && result.info !== null) {
+      this.family = result.info;
+      this.members = result.info.members;
+      this.syncMyRole(result.info);
+      promptAction.showToast({ message: '已移除 ' + member.name });
+    } else {
+      const msg: string = result.message.length > 0 ? result.message : '移除失败，请检查网关连接';
+      promptAction.showToast({ message: msg });
     }
   }
 
@@ -187,17 +277,114 @@ struct FamilyPage {
             .alignItems(HorizontalAlign.Start)
             .layoutWeight(1)
 
-            Text(m.isOwner ? '户主' : '监护人')
+            Text(m.roleText)
               .fontSize(Theme.fs(13, this.largeFont))
-              .fontColor(m.isOwner ? Theme.orange : Theme.muted)
+              .fontColor(m.isAdmin ? Theme.orange : Theme.muted)
               .padding({ left: 8, right: 8, top: 3, bottom: 3 })
-              .backgroundColor(m.isOwner ? '#FFF3E8' : '#F2F4F8')
+              .backgroundColor(m.isAdmin ? '#FFF3E8' : '#F2F4F8')
               .borderRadius(6)
+
+            // 户主不能被移除；管理员能移除其他成员（含其他管理员）
+            if (this.isAdmin && !m.isOwner) {
+              Text(this.pendingRemoveId === m.memberId ? '确认移除' : '移除')
+                .fontSize(Theme.fs(13, this.largeFont))
+                .fontColor(this.pendingRemoveId === m.memberId ? Color.White : Theme.red)
+                .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+                .backgroundColor(this.pendingRemoveId === m.memberId ? Theme.red : '#FEE2E2')
+                .borderRadius(6)
+                .margin({ left: 8 })
+                .onClick(() => {
+                  this.removeMember(m);
+                })
+            }
           }
           .width('100%')
           .padding({ top: 12, bottom: 12 })
           .border({ width: { top: 1 }, color: Theme.line })
         }, (m: FamilyMember) => m.memberId)
+      }
+    }
+    .width('100%')
+    .padding(16)
+    .backgroundColor(Theme.card)
+    .borderRadius(Theme.radius)
+    .margin({ top: 12 })
+  }
+
+  /** 管理员面板：户主/管理员可以加人，也可以把家人提成管理员一起管 */
+  @Builder
+  adminCard() {
+    Column() {
+      Row() {
+        Text('成员管理')
+          .fontSize(Theme.fs(16, this.largeFont))
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Theme.navy)
+          .layoutWeight(1)
+        Text(this.showAdd ? '收起' : '添加成员')
+          .fontSize(Theme.fs(14, this.largeFont))
+          .fontColor(Theme.blue)
+          .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+          .backgroundColor('#EFF4FF')
+          .borderRadius(8)
+          .onClick(() => {
+            this.showAdd = !this.showAdd;
+          })
+      }
+      .width('100%')
+
+      Text('你是' + FamilyStore.roleText() + '，可以直接添加家人，或移除不用的成员。')
+        .fontSize(Theme.fs(13, this.largeFont))
+        .fontColor(Theme.muted)
+        .width('100%')
+        .margin({ top: 8 })
+        .lineHeight(Theme.fs(19, this.largeFont))
+
+      if (this.showAdd) {
+        TextInput({ text: this.newMemberName, placeholder: '成员称呼，例如 小儿子' })
+          .width('100%')
+          .height(44)
+          .fontSize(Theme.fs(15, this.largeFont))
+          .backgroundColor('#F2F4F8')
+          .borderRadius(10)
+          .margin({ top: 12 })
+          .onChange((value: string) => {
+            this.newMemberName = value;
+          })
+
+        Row() {
+          Text('把这个成员设为管理员')
+            .fontSize(Theme.fs(14, this.largeFont))
+            .fontColor(Theme.slate)
+            .layoutWeight(1)
+          Toggle({ type: ToggleType.Switch, isOn: this.newMemberAsAdmin })
+            .onChange((isOn: boolean) => {
+              this.newMemberAsAdmin = isOn;
+            })
+        }
+        .width('100%')
+        .height(40)
+        .margin({ top: 6 })
+
+        Text(this.adding ? '添加中……' : '确认添加')
+          .fontSize(Theme.fs(16, this.largeFont))
+          .fontColor(Color.White)
+          .width('100%')
+          .height(46)
+          .textAlign(TextAlign.Center)
+          .backgroundColor(this.adding ? Theme.muted : Theme.blue)
+          .borderRadius(10)
+          .margin({ top: 8 })
+          .onClick(() => {
+            this.addMember();
+          })
+
+        Text('管理员能添加、移除成员；监护人只能查看数据。')
+          .fontSize(Theme.fs(12, this.largeFont))
+          .fontColor(Theme.muted)
+          .width('100%')
+          .margin({ top: 8 })
+          .lineHeight(Theme.fs(18, this.largeFont))
       }
     }
     .width('100%')
@@ -381,6 +568,9 @@ struct FamilyPage {
           Column() {
             this.infoCard()
             this.memberCard()
+            if (this.isAdmin) {
+              this.adminCard()
+            }
             this.codeCard()
             this.footer()
           }

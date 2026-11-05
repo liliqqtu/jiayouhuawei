@@ -26,6 +26,7 @@ BACKSLASH = chr(92)                     # 反斜杠，避免源码里写转义�
 SKIP_DIRS = {'oh_modules', 'node_modules', 'build', '.hvigor', '.preview',
              '__pycache__', '.idea', '.cxx', 'worker'}
 SKIP_FILES = {'.DS_Store', 'local.properties'}
+SKIP_PREFIX = ('_tmp_',)                # 临时补丁脚本，不给队友
 SKIP_SUFFIX = ('.pyc', '.db', '.db-wal', '.db-shm', '.log', '.hap', '.hsp')
 
 # 这些文件即使命中 SKIP_SUFFIX 也要保留
@@ -43,6 +44,8 @@ def include(rel: str) -> bool:
     if any(p in SKIP_DIRS for p in parts):
         return False
     if parts[-1] in SKIP_FILES:
+        return False
+    if parts[-1].startswith(SKIP_PREFIX):
         return False
     if rel.startswith('data/'):
         return False

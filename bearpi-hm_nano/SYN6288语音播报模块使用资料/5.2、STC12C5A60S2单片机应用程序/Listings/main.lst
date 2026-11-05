@@ -1,0 +1,186 @@
+C51 COMPILER V9.00   MAIN                                                                  04/25/2020 20:43:41 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Program Files\keil 51\C51\BIN\C51.EXE main.c LARGE BROWSE INCDIR(.\IIC_OLED) DEBUG OBJECTEXTEND 
+                    -PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*
+   2          1.项目名称：绿深旗舰店-51综合测试板SYN6288语音合成模块测试程序
+   3          2.显示模块：无
+   4          3.使用软件：keil4 for 51 或 keil5 for 51
+   5          4.配套上位机：无
+   6          5.项目组成：SYN6288语音合成模块、绿深51综合测试板
+   7          6.项目功能：将文字转化成语音朗读出来，出厂波特率默认9600。
+   8          7.主要原理：具体参考SYN6288数据手册
+   9          8.购买地址：https://lssz.tmall.com 或淘宝上搜索“绿深旗舰店”
+  10          9.版权声明：绿深旗舰店所有程序都申请软件著作权。均与本店产品配套出售，请不要传播，以免追究其法律责任！
+  11          接线定义：（此例程使用的晶振为11.0592M）
+  12                          VCC--5V
+  13                          RXD--TX/P1.2
+  14                          TXD--RX/P1.3
+  15                          GND--GND
+  16          */
+  17          #include "reg51.h"
+  18          #include <string.h>
+  19          
+  20          
+  21          #define uchar unsigned char
+  22          #define uint unsigned int
+  23          
+  24          #define S2RI  0x01          //S2CON.0
+  25          #define S2TI  0x02          //S2CON.1
+  26          #define S2RB8 0x04          //S2CON.2
+  27          #define S2TB8 0x08          //S2CON.3
+  28          
+  29          sfr AUXR  = 0x8e;           //Auxiliary register
+  30          sfr S2CON = 0x9a;           //UART2 control register
+  31          sfr S2BUF = 0x9b;           //UART2 data buffer
+  32          sfr BRT   = 0x9c;           //Baudrate generator
+  33          sfr IE2   = 0xaf;           //Interrupt control
+  34          
+  35          /**************芯片设置命令*********************/
+  36          uchar SYN_StopCom[] = {0xFD, 0X00, 0X02, 0X02, 0XFD}; //停止合成
+  37          uchar SYN_SuspendCom[] = {0XFD, 0X00, 0X02, 0X03, 0XFC}; //暂停合成
+  38          uchar SYN_RecoverCom[] = {0XFD, 0X00, 0X02, 0X04, 0XFB}; //恢复合成
+  39          uchar SYN_ChackCom[] = {0XFD, 0X00, 0X02, 0X21, 0XDE}; //状态查询
+  40          uchar SYN_PowerDownCom[] = {0XFD, 0X00, 0X02, 0X88, 0X77}; //进入POWER DOWN 状态命令
+  41          
+  42          //串口2初始化
+  43          void Uart2_Init(void)
+  44          {
+  45   1        AUXR &= 0xF7;         //波特率不倍速
+  46   1        S2CON = 0x50;         //8位数据,可变波特率
+  47   1        AUXR &= 0xFB;         //独立波特率发生器时钟为Fosc/12,即12T
+  48   1        BRT = 0xFD;           //设定独立波特率发生器重装值
+  49   1        AUXR |= 0x10;         //启动独立波特率发生器
+  50   1        ES = 1;
+  51   1        EA = 1;
+  52   1      }
+  53          
+  54          //串口2发送一字节数据
+C51 COMPILER V9.00   MAIN                                                                  04/25/2020 20:43:41 PAGE 2   
+
+  55          void UART2_SendByte(uchar DAT)
+  56          {
+  57   1        S2BUF = DAT;
+  58   1        while((S2CON & 0X02) == 0);
+  59   1        S2CON &= ~0X02;
+  60   1      }
+  61          
+  62          //串口2发送字符串数据
+  63          void UART2_SendString(uchar *DAT, uchar len)
+  64          {
+  65   1        uchar i;
+  66   1        for(i = 0; i < len; i++)
+  67   1        {
+  68   2          UART2_SendByte(*DAT++);
+  69   2        }
+  70   1      }
+  71          
+  72          //串口2中断
+  73          void Uart2_Isr() interrupt 8
+  74          {
+  75   1        if(S2CON & S2RI)
+  76   1        {
+  77   2          S2CON &= ~S2RI;
+  78   2        }
+  79   1      
+  80   1      }
+  81          
+  82          
+  83          //Music:  0:无背景音乐  1~15:选择背景音乐
+  84          void SYN_FrameInfo(uchar Music, uchar *HZdata)
+  85          {
+  86   1        /****************需要发送的文本**********************************/
+  87   1        uchar  Frame_Info[50];
+  88   1        uchar  HZ_Length;
+  89   1        uchar  ecc  = 0;                      //定义校验字节
+  90   1        uint i = 0;
+  91   1        HZ_Length = strlen((char*)HZdata);                    //需要发送文本的长度
+  92   1      
+  93   1        /*****************帧固定配置信息**************************************/
+  94   1        Frame_Info[0] = 0xFD ;                        //构造帧头FD
+  95   1        Frame_Info[1] = 0x00 ;                        //构造数据区长度的高字节
+  96   1        Frame_Info[2] = HZ_Length + 3;                //构造数据区长度的低字节
+  97   1        Frame_Info[3] = 0x01 ;                        //构造命令字：合成播放命令
+  98   1        Frame_Info[4] = 0x01 | Music << 4 ; //构造命令参数：背景音乐设定
+  99   1      
+ 100   1        /*******************校验码计算***************************************/
+ 101   1        for(i = 0; i < 5; i++)                                //依次发送构造好的5个帧头字节
+ 102   1        {
+ 103   2          ecc = ecc ^ (Frame_Info[i]);                //对发送的字节进行异或校验
+ 104   2        }
+ 105   1      
+ 106   1        for(i = 0; i < HZ_Length; i++)                //依次发送待合成的文本数据
+ 107   1        {
+ 108   2          ecc = ecc ^ (HZdata[i]);                            //对发送的字节进行异或校验
+ 109   2        }
+ 110   1        /*******************发送帧信息***************************************/
+ 111   1        memcpy(&Frame_Info[5], HZdata, HZ_Length);
+ 112   1        Frame_Info[5 + HZ_Length] = ecc;
+ 113   1        UART2_SendString(Frame_Info, 5 + HZ_Length + 1);
+ 114   1      }
+ 115          
+ 116          
+C51 COMPILER V9.00   MAIN                                                                  04/25/2020 20:43:41 PAGE 3   
+
+ 117          /***********************************************************
+ 118          * 名    称： YS_SYN_Set(uchar *Info_data)
+ 119          * 功    能： 主函数     程序入口
+ 120          * 入口参数： *Info_data:固定的配置信息变量
+ 121          * 出口参数：
+ 122          * 说    明：本函数用于配置，停止合成、暂停合成等设置 ，默认波特率9600bps。
+ 123          * 调用方法：通过调用已经定义的相关数组进行配置。
+ 124          **********************************************************/
+ 125          void YS_SYN_Set(uchar *Info_data)
+ 126          {
+ 127   1        uchar Com_Len;
+ 128   1        Com_Len = strlen((char*)Info_data);
+ 129   1        UART2_SendString(Info_data, Com_Len);
+ 130   1      }
+ 131          
+ 132          //软件延时1ms
+ 133          void  delay(uint uldata)
+ 134          {
+ 135   1        uint j  =  0;
+ 136   1        uint g  =  0;
+ 137   1        for (j = 0; j < uldata; j++)
+ 138   1          for (g = 0; g < 850; g++);
+ 139   1      }
+ 140          
+ 141          
+ 142          void  main(void)
+ 143          {
+ 144   1        Uart2_Init();
+ 145   1        while(1)
+ 146   1        {
+ 147   2          //选择背景音乐2。(0：无背景音乐  1-15：背景音乐可选)
+ 148   2          //m[0~16]:0背景音乐为静音，16背景音乐音量最大
+ 149   2          //v[0~16]:0朗读音量为静音，16朗读音量最大
+ 150   2          //t[0~5]:0朗读语速最慢，5朗读语速最快
+ 151   2          //其他不常用功能请参考数据手册
+ 152   2          SYN_FrameInfo(2, "[v5][t5]欢迎使用绿深旗舰店SYN6288语音合成模块");
+ 153   2          //暂停合成，此时没有用到，用于展示函数用法
+ 154   2          //YS_SYN_Set(SYN_SuspendCom);
+ 155   2          delay(10000);
+ 156   2        }
+ 157   1      
+ 158   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    383    ----
+   CONSTANT SIZE    =     46    ----
+   XDATA SIZE       =     25      62
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

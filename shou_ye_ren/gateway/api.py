@@ -10,6 +10,8 @@ from datetime import date, timedelta
 from gateway import util
 from gateway.family import FamilyError, FamilyRegistry
 from gateway.config import Thresholds
+from gateway import sensors
+from gateway import telemetry
 from gateway.ingest import normalize_source
 from gateway.rules import Engine, zone_text
 
@@ -41,6 +43,9 @@ class Api(object):
         # 是否用电脑模拟“本地声光”（演示用；真机由固件驱动 LED + 蜂鸣器）
         self.siren = False
         self.voice = False
+        # 板端语音模块（BY8301 类）。None = 未接；由 server.py 按 --voice-backend 注入，
+        # 测试里可以塞一个 log 后端来验证“SOS 触发预设语音”这条链路。
+        self.voice_module = None
         # 家庭组：内存态（网关重启即重置），生产环境应替换为云端账号体系
         self.families = FamilyRegistry()
         self.routes = [
@@ -58,11 +63,16 @@ class Api(object):
             ("GET", re.compile(r"^/api/v1/reports/monthly$"), self.monthly_report),
             ("GET", re.compile(r"^/api/v1/siren$"), self.siren_status),
             ("POST", re.compile(r"^/api/v1/siren$"), self.siren_set),
+            ("GET", re.compile(r"^/api/v1/sensors$"), self.get_sensors),
+            ("GET", re.compile(r"^/api/v1/voice$"), self.voice_status),
+            ("POST", re.compile(r"^/api/v1/voice$"), self.voice_say),
             ("GET", re.compile(r"^/api/v1/device$"), self.device_status),
             ("POST", re.compile(r"^/api/v1/family/create$"), self.family_create),
             ("POST", re.compile(r"^/api/v1/family/join$"), self.family_join),
             ("GET", re.compile(r"^/api/v1/family$"), self.family_get),
             ("GET", re.compile(r"^/api/v1/family/lookup$"), self.family_lookup),
+            ("POST", re.compile(r"^/api/v1/family/member/add$"), self.family_add_member),
+            ("POST", re.compile(r"^/api/v1/family/member/remove$"), self.family_remove_member),
             ("GET", re.compile(r"^/api/v1/devices$"), self.list_devices),
             ("POST", re.compile(r"^/api/v1/devices$"), self.create_device),
             ("GET", re.compile(r"^/api/v1/config/threshold$"), self.get_thresholds),
@@ -169,6 +179,42 @@ class Api(object):
         except FamilyError as exc:
             raise ApiError(exc.status, exc.code, exc.message)
 
+    def family_add_member(self, params, body):
+        """管理员（户主默认是管理员）直接添加成员，不需要对方扫码加入。
+
+        body: {"familyId": "F-001", "operator": "小王", "name": "小儿子", "role": "guardian"}
+        operatorId 与 operator 二选一：APP 一般只记得自己的称呼。
+        """
+        _require(body, "familyId")
+        _require(body, "name")
+        try:
+            return self.families.add_member(
+                body.get("familyId"),
+                operator_id=body.get("operatorId") or None,
+                operator_name=body.get("operator") or None,
+                member_name=body.get("name"),
+                role=body.get("role") or "guardian",
+            )
+        except FamilyError as exc:
+            raise ApiError(exc.status, exc.code, exc.message)
+
+    def family_remove_member(self, params, body):
+        """管理员移除成员；户主本人不能被移除。
+
+        body: {"familyId": "F-001", "operator": "小王", "memberId": "M-0002"}
+        """
+        _require(body, "familyId")
+        _require(body, "memberId")
+        try:
+            return self.families.remove_member(
+                body.get("familyId"),
+                body.get("memberId"),
+                operator_id=body.get("operatorId") or None,
+                operator_name=body.get("operator") or None,
+            )
+        except FamilyError as exc:
+            raise ApiError(exc.status, exc.code, exc.message)
+
     # ---------------------------------------------------------- snapshot
     def post_snapshot(self, params, body):
         """HTTP 通道入口（兼容旧固件）。"""
@@ -179,6 +225,12 @@ class Api(object):
 
         UDP / 串口进来的报文与 HTTP 走完全相同的校验，避免"两套规则"。
         """
+        # 板端串口遥测（简化格式，见 gateway/telemetry.py）先翻译成标准快照，
+        # 之后所有通道走同一套校验/入库/判定，不出现两套规则。
+        telemetry_src = None
+        if telemetry.looks_like_telemetry(body):
+            telemetry_src = body
+            body = telemetry.to_snapshot(body)
         _require(body, "deviceId")
         ts_raw = _require(body, "ts")
         ts_dt = util.parse_ts(ts_raw)
@@ -221,6 +273,18 @@ class Api(object):
         }
         self.store.save_snapshot(snap)
         alarms = self.engine.on_snapshot(snap)
+        # 遥测帧里的 SOS 位：映射成 L3 事件，和 HTTP /events 走同一个判定
+        if telemetry_src is not None:
+            sos_event = telemetry.to_sos_event(telemetry_src, snap["deviceId"])
+            if sos_event:
+                sos_alarm = self.engine.on_event(sos_event)
+                if sos_alarm:
+                    alarms.append(sos_alarm)
+            # 烟雾 / 燃气：板端传感器的数字量位（smoke=1 / gas=1）也走同一条判定
+            for hazard in telemetry.to_hazard_events(telemetry_src, snap["deviceId"]):
+                hazard_alarm = self.engine.on_event(hazard)
+                if hazard_alarm:
+                    alarms.append(hazard_alarm)
         self.alert(alarms)
         return {
             "ok": True,
@@ -276,6 +340,9 @@ class Api(object):
             "message": top["message"],
             "ts": top["ts"],
         }
+        # 烟雾/燃气这类"持续状态"传感器：首页要和门磁一样一眼看出正常/报警
+        snap["sensors"] = sensors.sensor_states(
+            self.store, device_id or snap.get("deviceId"))
         return snap
 
     def list_snapshots(self, params, body):
@@ -533,14 +600,49 @@ class Api(object):
             except Exception:
                 pass
         if self.voice:
-            try:
-                import subprocess
-                text = str(first.get("message", "")).replace("'", "")
-                script = "(New-Object -ComObject SAPI.SpVoice).Speak('%s')" % text
-                subprocess.Popen(["powershell", "-NoProfile", "-Command", script],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
+            if self.voice_module is not None:
+                # 新路径：按告警类型播预设语音（SOS ->“我需要帮助”），由 voice_module 管后端
+                for alarm in alarms[:3]:
+                    self.voice_module.play(alarm.get("type"), alarm.get("message", ""))
+            else:
+                try:
+                    import subprocess
+                    text = str(first.get("message", "")).replace("'", "")
+                    script = "(New-Object -ComObject SAPI.SpVoice).Speak('%s')" % text
+                    subprocess.Popen(["powershell", "-NoProfile", "-Command", script],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+
+    # --------------------------------------------------- 烟雾 / 燃气
+    def get_sensors(self, params, body):
+        """烟雾 / 燃气当前状态（首页卡片、看板都读它）。"""
+        device_id = params.get("deviceId") or None
+        return sensors.sensor_states(self.store, device_id)
+
+    # --------------------------------------------------- 语音模块
+    def voice_status(self, params, body):
+        """语音模块状态：后端类型、播放次数、最近一次播报。"""
+        if self.voice_module is None:
+            return {"enabled": False, "backend": None,
+                    "note": "未启用语音模块（启动网关时加 --voice）"}
+        status = self.voice_module.status()
+        status["enabled"] = bool(self.voice)
+        return status
+
+    def voice_say(self, params, body):
+        """手动触发一条语音（演示/联调用）：
+        {"key": "SOS"} 播预设语音；{"text": "..."} 直接播报任意文本。
+        """
+        if self.voice_module is None:
+            raise ApiError(400, "VOICE_DISABLED",
+                           "语音模块未启用：启动网关时加 --voice（可配 --voice-backend）")
+        key = body.get("key") or ""
+        text = body.get("text") or ""
+        if not key and not text:
+            raise ApiError(400, "BAD_REQUEST", "需要 key 或 text 之一")
+        record = self.voice_module.play(key, text)
+        return {"ok": bool(record.get("ok")), "played": record}
 
     # ------------------------------------------------------------ events
     def post_event(self, params, body):

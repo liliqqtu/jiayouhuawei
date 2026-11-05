@@ -18,12 +18,19 @@ extern "C" {
 #define PIN_INFRARED            7    // 人体红外 (GPIO_7)
 #define PIN_BEEPER              8    // 蜂鸣器 (GPIO_8, PWM1)
 #define PWM_PORT_BEEPER         1
-#define PIN_DOOR_REED           13   // 门磁干簧管 (GPIO_13, 上拉输入, 0:关门 1:开门)
+#define PIN_DOOR_REED           10   // 门磁干簧管 (GPIO_10: J1 第 1 孔 SPI_SCK，与烟雾 SF1 零冲突)
 #define PIN_KEY_SOS             11   // F1 紧急求助 (GPIO_11, 按下接地)
 #define PIN_KEY_RESET           12   // F2 复位按键 (GPIO_12, 按下接地)
 #define PIN_LED_SYS             2    // 板载LED (GPIO_2)
 #define PIN_I2C1_SDA            0    // SHT30 SDA
 #define PIN_I2C1_SCL            1    // SHT30 SCL
+
+// SYN6288 中文语音合成播报模块
+#define PIN_VOICE_TXD           6    // SYN6288 RXD (GPIO_6, UART1_TXD)
+#define PIN_VOICE_RXD           5    // SYN6288 TXD/BUSY (GPIO_5, UART1_RXD)
+#define UART_VOICE_PORT         1    // UART1
+#define DEFAULT_VOICE_VOLUME    12   // 默认音量 (0~16, 12为默认适中偏响，清晰易听)
+#define CFG_UDP_CMD_PORT        9998 // 局域网接收控制指令 UDP 端口
 
 // 告警阈值
 #define DEFAULT_NO_MOTION_TIMEOUT_SEC     30     // 连续无活动超时(秒)，测试设为30秒
@@ -46,7 +53,8 @@ typedef enum {
     ALERT_TYPE_NO_MOTION,       // 长时间无人移动
     ALERT_TYPE_DOOR_TIMEOUT,    // 门未关
     ALERT_TYPE_TEMP_HIGH,       // 高温
-    ALERT_TYPE_TEMP_LOW         // 低温
+    ALERT_TYPE_TEMP_LOW,        // 低温
+    ALERT_TYPE_SMOKE            // 浓烟与燃气火险
 } alert_type_t;
 
 // 传感器状态数据
@@ -66,6 +74,9 @@ typedef struct {
     // 温湿度
     float    temperature;                // 温度
     float    humidity;                   // 湿度
+
+    // 语音音量 (SYN6288)
+    uint8_t  voice_volume;               // 当前播报音量 (0~16)
 
     alert_level_t current_level;         // 当前等级
     alert_type_t  current_alert;         // 当前告警原因

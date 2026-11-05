@@ -428,6 +428,22 @@ class Store(object):
             row = self.conn.execute(sql, args).fetchone()
         return alarm_json(row)
 
+    def latest_alarm_by_type(self, alarm_type, device_id=None):
+        """最近一条指定类型的告警（不论状态）。
+
+        烟雾/燃气状态卡片要用它：pending 说明正在报警，closed 说明已处置，
+        两者都带着"上次报警时间"，卡片不至于一片空白。
+        """
+        sql = "SELECT * FROM alarm WHERE type=?"
+        args = [alarm_type]
+        if device_id:
+            sql += " AND device_id=?"
+            args.append(device_id)
+        sql += " ORDER BY ts DESC LIMIT 1"
+        with self.lock:
+            row = self.conn.execute(sql, args).fetchone()
+        return alarm_json(row)
+
     def recent_closed_alarm(self, alarm_type, device_id=None, within_seconds=900):
         """查询指定类型在 within_seconds 秒内最近被关闭的告警（用于时间阀门防抖与防告警风暴）。"""
         sql = "SELECT * FROM alarm WHERE type=? AND status='closed' AND closed_ts IS NOT NULL"

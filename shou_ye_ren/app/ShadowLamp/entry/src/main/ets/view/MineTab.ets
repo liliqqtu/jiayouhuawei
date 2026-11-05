@@ -321,7 +321,8 @@ export struct MineTab {
       }
       .width('100%')
       Text(this.familyName.length > 0
-        ? (this.familyName + ' · ' + (this.familyRole === 'owner' ? '户主' : '监护人'))
+        ? (this.familyName + ' · ' + (this.familyRole === 'owner' ? '户主'
+          : (this.familyRole === 'admin' ? '管理员' : '监护人')))
         : '还没加入家庭组，点这里创建或加入')
         .fontSize(Theme.fs(14, this.largeFont))
         .fontColor(this.familyName.length > 0 ? Theme.slate : Theme.orange)

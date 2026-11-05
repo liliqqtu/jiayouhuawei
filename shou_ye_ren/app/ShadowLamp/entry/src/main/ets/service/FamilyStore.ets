@@ -13,6 +13,7 @@ import { FamilyInfo } from '../model/Models';
 
 const PREF_NAME: string = 'shadowlamp_family';
 const KEY_FAMILY_ID: string = 'familyId';
+const KEY_MEMBER_ID: string = 'memberId';
 const KEY_FAMILY_NAME: string = 'familyName';
 const KEY_INVITE_CODE: string = 'inviteCode';
 const KEY_MEMBER_NAME: string = 'memberName';
@@ -23,6 +24,8 @@ export class FamilyStore {
   /** 是否已加入家庭组（决定启动进首页还是进“创建/加入”页） */
   static joined: boolean = false;
   static familyId: string = '';
+  /** 我在成员表里的编号：删成员、判断是不是管理员都靠它 */
+  static memberId: string = '';
   static familyName: string = '';
   static inviteCode: string = '';
   /** 我在这个组里的称呼，例如“大女儿”“网格员小李” */
@@ -39,6 +42,7 @@ export class FamilyStore {
       FamilyStore.pref = await preferences.getPreferences(context, PREF_NAME);
       FamilyStore.joined = (await FamilyStore.pref.get(KEY_JOINED, false)) as boolean;
       FamilyStore.familyId = (await FamilyStore.pref.get(KEY_FAMILY_ID, '')) as string;
+      FamilyStore.memberId = (await FamilyStore.pref.get(KEY_MEMBER_ID, '')) as string;
       FamilyStore.familyName = (await FamilyStore.pref.get(KEY_FAMILY_NAME, '')) as string;
       FamilyStore.inviteCode = (await FamilyStore.pref.get(KEY_INVITE_CODE, '')) as string;
       FamilyStore.memberName = (await FamilyStore.pref.get(KEY_MEMBER_NAME, '')) as string;
@@ -59,9 +63,11 @@ export class FamilyStore {
     FamilyStore.inviteCode = info.inviteCode;
     FamilyStore.memberName = myName;
     // 身份以网关成员表为准：名字对得上就是那条，否则按“监护人”处理
+    FamilyStore.memberId = '';
     FamilyStore.role = 'guardian';
     for (let i = 0; i < info.members.length; i++) {
       if (info.members[i].name === myName) {
+        FamilyStore.memberId = info.members[i].memberId;
         FamilyStore.role = info.members[i].role;
       }
     }
@@ -72,6 +78,7 @@ export class FamilyStore {
     if (FamilyStore.pref !== null) {
       await FamilyStore.pref.put(KEY_JOINED, true);
       await FamilyStore.pref.put(KEY_FAMILY_ID, info.familyId);
+      await FamilyStore.pref.put(KEY_MEMBER_ID, FamilyStore.memberId);
       await FamilyStore.pref.put(KEY_FAMILY_NAME, info.familyName);
       await FamilyStore.pref.put(KEY_INVITE_CODE, info.inviteCode);
       await FamilyStore.pref.put(KEY_MEMBER_NAME, myName);
@@ -84,6 +91,7 @@ export class FamilyStore {
   static async clear(): Promise<void> {
     FamilyStore.joined = false;
     FamilyStore.familyId = '';
+    FamilyStore.memberId = '';
     FamilyStore.familyName = '';
     FamilyStore.inviteCode = '';
     FamilyStore.memberName = '';
@@ -94,6 +102,7 @@ export class FamilyStore {
     if (FamilyStore.pref !== null) {
       await FamilyStore.pref.put(KEY_JOINED, false);
       await FamilyStore.pref.put(KEY_FAMILY_ID, '');
+      await FamilyStore.pref.put(KEY_MEMBER_ID, '');
       await FamilyStore.pref.put(KEY_FAMILY_NAME, '');
       await FamilyStore.pref.put(KEY_INVITE_CODE, '');
       await FamilyStore.pref.put(KEY_MEMBER_NAME, '');
@@ -104,7 +113,32 @@ export class FamilyStore {
 
   /** 身份的中文名，直接给界面用 */
   static roleText(): string {
-    return FamilyStore.role === 'owner' ? '户主' : (FamilyStore.role.length > 0 ? '监护人' : '未加入');
+    if (FamilyStore.role === 'owner') {
+      return '户主';
+    }
+    if (FamilyStore.role === 'admin') {
+      return '管理员';
+    }
+    return FamilyStore.role.length > 0 ? '监护人' : '未加入';
+  }
+
+  /**
+   * 用网关成员表里的身份对齐本地记录（被提成管理员、被降级时用）。
+   * 不写盘：每次进家庭组页都会重新对齐，网关才是身份的来源。
+   */
+  static applyRole(role: string, memberId: string): void {
+    if (memberId.length > 0 && memberId !== FamilyStore.memberId) {
+      FamilyStore.memberId = memberId;
+    }
+    if (role.length > 0 && role !== FamilyStore.role) {
+      FamilyStore.role = role;
+      AppStorage.setOrCreate<string>('familyRole', role);
+    }
+  }
+
+  /** 我是不是管理员（户主默认是）：决定家庭组页要不要显示“添加/移除成员” */
+  static isAdmin(): boolean {
+    return FamilyStore.role === 'owner' || FamilyStore.role === 'admin';
   }
 
   /** init 可能没跑完就被调用，这里兜底补一次 */

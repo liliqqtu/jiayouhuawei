@@ -8,6 +8,8 @@
     python sim/incident.py --type idle       # 日间长时间无活动 -> L2 关注
     python sim/incident.py --type door       # 门磁开启超时 -> L1
     python sim/incident.py --type sos        # 随身按钮求助 -> L3 紧急
+    python sim/incident.py --type gas        # 燃气浓度超限 -> L3 紧急
+    python sim/incident.py --type smoke      # 烟雾浓度超限 -> L3 紧急
 
 说明：注入的数据 source=test，APP 会标“测试/模拟”，不冒充真实采集。
 """
@@ -61,7 +63,8 @@ def frame(client, ts, **kw):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--type", required=True,
-                        choices=["temp", "fire", "hum", "lux", "night", "idle", "door", "sos", "reset"])
+                        choices=["temp", "fire", "hum", "lux", "night", "idle", "door",
+                                 "sos", "gas", "smoke", "reset"])
     parser.add_argument("--url", default="http://127.0.0.1:8780")
     parser.add_argument("--device", default="bearpi-001")
     parser.add_argument("--auto-close", action="store_true",
@@ -176,6 +179,18 @@ def main():
         time.sleep(0.5)
         frame(client, now, pir=False, zone="entry", temperature=23.0, humidity=50.0,
               lux=180.0, door_open=True, last_motion_ts=now - timedelta(minutes=30))
+
+    elif args.type == "gas":
+        print("注入：厨房燃气浓度超限（MQ-5 数字量=1）")
+        print("期望：L3 紧急 · 燃气泄漏报警，请立即确认；现场语音模块播报“检测到燃气泄漏”")
+        print("      首页「安全传感」卡片：燃气 -> 报警（处置完告警后自动回到正常）")
+        client.event("GAS", now, {"zone": "kitchen", "sensor": "MQ-5"})
+
+    elif args.type == "smoke":
+        print("注入：客厅烟雾浓度超限（MQ-2 数字量=1）")
+        print("期望：L3 紧急 · 烟雾报警，请立即确认；现场语音模块播报“检测到烟雾”")
+        print("      首页「安全传感」卡片：烟雾 -> 报警（处置完告警后自动回到正常）")
+        client.event("SMOKE", now, {"zone": "living", "sensor": "MQ-2"})
 
     else:
         print("注入：随身按钮求助")

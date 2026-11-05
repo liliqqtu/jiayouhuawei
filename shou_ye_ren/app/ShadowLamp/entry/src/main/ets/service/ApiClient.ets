@@ -36,6 +36,21 @@ interface JoinFamilyBody {
   memberName: string;
 }
 
+/** 管理员添加成员请求体：operator 是我的称呼，name 是要加的人 */
+interface AddMemberBody {
+  familyId: string;
+  operator: string;
+  name: string;
+  role: string;
+}
+
+/** 管理员移除成员请求体 */
+interface RemoveMemberBody {
+  familyId: string;
+  operator: string;
+  memberId: string;
+}
+
 /** 网关错误体：{ code, message } */
 interface FamilyErrorBody {
   code: string;
@@ -196,6 +211,34 @@ export class ApiClient {
   static async familyInfo(familyId: string): Promise<FamilyResult> {
     return ApiClient.sendFamily(`/api/v1/family?familyId=${familyId}`,
       http.RequestMethod.GET, '');
+  }
+
+  /**
+   * 管理员添加成员：给不会扫码、不会输密码的亲人先建一个成员位。
+   * role 传 guardian（监护人）或 admin（管理员），传别的网关会 400。
+   */
+  static async familyAddMember(familyId: string, operator: string, memberName: string,
+                               role: string): Promise<FamilyResult> {
+    const body: AddMemberBody = {
+      familyId: familyId,
+      operator: operator,
+      name: memberName,
+      role: role
+    };
+    return ApiClient.sendFamily('/api/v1/family/member/add', http.RequestMethod.POST,
+      JSON.stringify(body));
+  }
+
+  /** 管理员移除成员：户主不能被移除（网关返回 400），其余成员立即从名单消失 */
+  static async familyRemoveMember(familyId: string, operator: string,
+                                  memberId: string): Promise<FamilyResult> {
+    const body: RemoveMemberBody = {
+      familyId: familyId,
+      operator: operator,
+      memberId: memberId
+    };
+    return ApiClient.sendFamily('/api/v1/family/member/remove', http.RequestMethod.POST,
+      JSON.stringify(body));
   }
 
   /**

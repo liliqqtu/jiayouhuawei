@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""测试环境类与门窗类告警时间阀门冷却去重机制，验证跌倒/SOS等零冷却即时告警。"""
+"""测试环境类与门窗类告警时间阀门冷却去重机制，验证 FALL/SOS 等严重安全告警零冷却即时告警。"""
 import json
 import os
 import shutil
@@ -66,7 +66,7 @@ class TestCooldownAndSuppression(unittest.TestCase):
         self.assertEqual(len(alarms2), 0, "处于冷却期内的环境告警不应重复产生新告警")
 
     def test_emergency_alarm_zero_cooldown(self):
-        """跌倒/SOS 等严重安全告警：零冷却间隔，每次触发都必须立即报警建单！"""
+        """FALL/SOS 等严重安全告警：零冷却间隔，每次触发都必须立即报警建单！"""
         device = "dev-sos-01"
         ts1 = util.iso_now()
 

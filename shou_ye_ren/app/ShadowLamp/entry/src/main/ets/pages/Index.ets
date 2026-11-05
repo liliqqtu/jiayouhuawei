@@ -10,6 +10,7 @@ import { Theme } from '../common/Theme';
 import { ApiClient, Settings } from '../service/ApiClient';
 import { AlarmEvent } from '../model/Models';
 import { Alerter } from '../service/Alerter';
+import { Notifier } from '../service/Notifier';
 import { Guide } from '../view/Guide';
 import { AlarmStore } from '../service/AlarmStore';
 import { Outbox } from '../service/Outbox';
@@ -67,6 +68,7 @@ struct Index {
     }
     await AlarmStore.init(ctx);
     await Alerter.init(ctx);
+    await Notifier.init(ctx);
     await Outbox.init(ctx);
     this.tick += 1;
   }
@@ -80,10 +82,12 @@ struct Index {
       return;
     }
     let rank: number = 0;
+    let top: AlarmEvent | null = null;
     for (const item of list) {
       const value: number = item.level === 'L3' ? 3 : (item.level === 'L2' ? 2 : 1);
       if (value > rank) {
         rank = value;
+        top = item;
       }
     }
     const count: number = list.length;
@@ -91,7 +95,15 @@ struct Index {
     this.lastLevelRank = rank;
     this.lastPendingCount = count;
     if (worse && rank > 0) {
-      Alerter.notify(rank === 3 ? 'L3' : (rank === 2 ? 'L2' : 'L1'));
+      const level: string = rank === 3 ? 'L3' : (rank === 2 ? 'L2' : 'L1');
+      Alerter.notify(level);
+      // 通知栏写“最严重那条”的原文，家属瞄一眼就知道是哪类风险
+      const message: string = top !== null ? top.message : ('有 ' + count + ' 条待确认告警，请打开守夜灯查看');
+      const eventId: string = top !== null ? top.eventId : '';
+      Notifier.alarm(level, message, eventId);
+    } else if (count === 0) {
+      // 都处置完了就清空通知，别让早已处理的告警一直挂在通知栏
+      Notifier.cancelAll();
     }
   }
 

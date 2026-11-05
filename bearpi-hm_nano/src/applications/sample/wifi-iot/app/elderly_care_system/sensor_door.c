@@ -16,9 +16,13 @@ static uint8_t           g_debounce_history = 0;
 
 void SensorDoorInit(void)
 {
-    // GPIO_13 初始化为标准数字 GPIO 输入，并开启内部上拉
+    // 初始化门磁 GPIO 输入，开启内部上拉
     IoTGpioInit(PIN_DOOR_REED);
+#if (PIN_DOOR_REED == 10)
+    IoTGpioSetFunc(PIN_DOOR_REED, IOT_GPIO_FUNC_GPIO_10_GPIO);
+#else
     IoTGpioSetFunc(PIN_DOOR_REED, IOT_GPIO_FUNC_GPIO_13_GPIO);
+#endif
     IoTGpioSetDir(PIN_DOOR_REED, IOT_GPIO_DIR_IN);
     IoTGpioSetPull(PIN_DOOR_REED, IOT_GPIO_PULL_UP);
 
@@ -26,7 +30,7 @@ void SensorDoorInit(void)
     g_door_open_duration = 0;
     g_debounce_history = 0;
 
-    printf("[DOOR] Reed switch door/window sensor initialized on GPIO_13.\n");
+    printf("[DOOR] Reed switch door/window sensor initialized on GPIO_%d.\n", PIN_DOOR_REED);
 }
 
 uint8_t SensorDoorIsOpen(void)

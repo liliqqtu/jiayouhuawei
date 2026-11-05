@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 
 from gateway.api import Api            # noqa: E402
-from gateway.server import Handler, QuietServer  # noqa: E402
+from gateway.server import Handler, QuietServer      # noqa: E402
 from gateway.store import Store         # noqa: E402
 
 TZ = timezone(timedelta(hours=8))
@@ -450,6 +450,88 @@ class ApiTestCase(unittest.TestCase):
         status, detail = self.call("GET", "/api/v1/family?familyId=" + fam["familyId"])
         self.assertEqual(status, 200, detail)
         self.assertEqual(detail["memberCount"], 1)
+
+    def test_35_family_owner_manages_members(self):
+        """户主默认是管理员：可以直接添加成员、删除成员，不用对方扫码。"""
+        status, fam = self.call("POST", "/api/v1/family/create",
+                                {"familyName": "王家", "ownerName": "小王"})
+        self.assertEqual(status, 200, fam)
+        owner = fam["members"][0]
+        self.assertTrue(owner["isOwner"])
+        self.assertTrue(owner["isAdmin"], "户主默认拥有管理员权限")
+        self.assertEqual(owner["memberId"], fam["ownerId"])
+
+        status, added = self.call("POST", "/api/v1/family/member/add",
+                                  {"familyId": fam["familyId"], "operator": "小王",
+                                   "name": "社区网格员", "role": "guardian"})
+        self.assertEqual(status, 200, added)
+        self.assertEqual(added["memberCount"], 2)
+        newcomer = added["members"][1]
+        self.assertEqual(newcomer["roleText"], "监护人")
+        self.assertFalse(newcomer["isAdmin"])
+
+        # 户主还可以把一个家人提成管理员，一起管成员
+        status, promoted = self.call("POST", "/api/v1/family/member/add",
+                                     {"familyId": fam["familyId"], "operator": "小王",
+                                      "name": "大女儿", "role": "admin"})
+        self.assertEqual(status, 200, promoted)
+        admin = promoted["members"][2]
+        self.assertEqual(admin["roleText"], "管理员")
+        self.assertTrue(admin["isAdmin"])
+        self.assertEqual(promoted["adminCount"], 2)
+
+        status, removed = self.call("POST", "/api/v1/family/member/remove",
+                                    {"familyId": fam["familyId"], "operator": "大女儿",
+                                     "memberId": newcomer["memberId"]})
+        self.assertEqual(status, 200, removed)
+        self.assertEqual(removed["memberCount"], 2, "管理员也能删人")
+        self.assertEqual([m["name"] for m in removed["members"]], ["小王", "大女儿"])
+
+    def test_36_family_member_management_is_guarded(self):
+        """非管理员不能增删；户主删不掉；重名与非法身份要单独报错。"""
+        status, fam = self.call("POST", "/api/v1/family/create",
+                                {"familyName": "赵家", "ownerName": "赵奶奶"})
+        self.assertEqual(status, 200, fam)
+        family_id = fam["familyId"]
+        owner_id = fam["members"][0]["memberId"]
+        status, joined = self.call("POST", "/api/v1/family/join",
+                                   {"inviteCode": fam["inviteCode"], "memberName": "侄子"})
+        self.assertEqual(status, 200, joined)
+
+        status, data = self.call("POST", "/api/v1/family/member/add",
+                                 {"familyId": family_id, "operator": "侄子",
+                                  "name": "陌生人"})
+        self.assertEqual(status, 403, data)
+        self.assertEqual(data["code"], "NOT_ADMIN")
+
+        status, data = self.call("POST", "/api/v1/family/member/remove",
+                                 {"familyId": family_id, "operator": "侄子",
+                                  "memberId": owner_id})
+        self.assertEqual(status, 403, data)
+        self.assertEqual(data["code"], "NOT_ADMIN")
+
+        status, data = self.call("POST", "/api/v1/family/member/remove",
+                                 {"familyId": family_id, "operator": "赵奶奶",
+                                  "memberId": owner_id})
+        self.assertEqual(status, 400, data)
+        self.assertEqual(data["code"], "CANNOT_REMOVE_OWNER")
+
+        status, data = self.call("POST", "/api/v1/family/member/add",
+                                 {"familyId": family_id, "operator": "赵奶奶",
+                                  "name": "侄子"})
+        self.assertEqual(status, 409, data)
+        self.assertEqual(data["code"], "MEMBER_EXISTS")
+
+        status, data = self.call("POST", "/api/v1/family/member/add",
+                                 {"familyId": family_id, "operator": "赵奶奶",
+                                  "name": "小孙子", "role": "owner"})
+        self.assertEqual(status, 400, data)
+        self.assertEqual(data["code"], "BAD_ROLE")
+
+        status, data = self.call("POST", "/api/v1/family/member/add",
+                                 {"familyId": "F-999", "operator": "赵奶奶", "name": "小孙子"})
+        self.assertEqual(status, 404, data)
+        self.assertEqual(data["code"], "FAMILY_NOT_FOUND")
 
 class IngestTestCase(unittest.TestCase):
     """数据接入层：三种通道的公共逻辑。"""

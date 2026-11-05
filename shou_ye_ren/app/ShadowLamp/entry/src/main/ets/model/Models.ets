@@ -30,6 +30,41 @@ export interface SensorSnapshot {
   staleSeconds?: number;
   /** 最高等级的待确认告警；null 表示没有待处理的事 */
   activeAlarm?: ActiveAlarm | null;
+  /** 烟雾 / 燃气这类“持续状态”传感器（网关 /api/v1/sensors，快照里也带一份） */
+  sensors?: SensorStatusPayload | null;
+}
+
+/** 单个安全传感器的状态：烟雾（火灾）或燃气（泄漏）。 */
+export interface SafetySensor {
+  /** gas | smoke */
+  kind: string;
+  /** 燃气 | 烟雾 */
+  name: string;
+  /** GAS | SMOKE，与告警类型一致 */
+  type: string;
+  note: string;
+  /** normal | alarm */
+  status: string;
+  /** 正常 | 报警 */
+  statusText: string;
+  level: string | null;
+  message: string | null;
+  /** 最近一条告警的触发时间 */
+  ts: string | null;
+  lastAlarmTs: string | null;
+  /** 最近一条告警的状态：pending | acknowledged | closed */
+  lastStatus: string | null;
+  eventId: string | null;
+  zone: string | null;
+  deviceId: string | null;
+}
+
+export interface SensorStatusPayload {
+  deviceId: string | null;
+  items: SafetySensor[];
+  /** 正在报警的传感器数量 */
+  alarming: number;
+  supportedTypes: string[];
 }
 
 export interface AlarmEvent {
@@ -332,6 +367,8 @@ export interface FamilyMember {
   roleText: string;
   joinedAt: string;
   isOwner: boolean;
+  /** 户主默认就是管理员；管理员可以添加、删除成员 */
+  isAdmin: boolean;
 }
 
 /** 一位老人 = 一个家庭组；组内多人共享同一份监测数据。 */
@@ -342,6 +379,10 @@ export interface FamilyInfo {
   createdAt: string;
   members: FamilyMember[];
   memberCount: number;
+  /** 户主的成员编号；老网关没有这个字段时为空串 */
+  ownerId?: string;
+  /** 管理员人数（含户主） */
+  adminCount?: number;
   note: string;
 }
 

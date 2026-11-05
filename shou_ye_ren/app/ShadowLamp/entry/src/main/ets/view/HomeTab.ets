@@ -5,7 +5,7 @@
 import { Theme } from '../common/Theme';
 import { MetricCell } from './MetricCell';
 import { ApiClient, Settings } from '../service/ApiClient';
-import { SensorSnapshot, humanAgo, isHardware, secondsSince, shortTime, sourceLabel, zoneLabel } from '../model/Models';
+import { SensorSnapshot, SafetySensor, SensorStatusPayload, humanAgo, isHardware, secondsSince, shortTime, sourceLabel, zoneLabel } from '../model/Models';
 
 @Component
 export struct HomeTab {
@@ -372,6 +372,128 @@ export struct HomeTab {
     .backgroundColor(Theme.bg)
   }
 
+  /** 烟雾 / 燃气：创新拓展里的“多维度监测”，状态由网关按告警记录反推 */
+  @Builder
+  safetyCard() {
+    Column({ space: 10 }) {
+      Row() {
+        Text('安全传感')
+          .fontSize(Theme.fs(15, this.largeFont))
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Theme.navy)
+        Blank()
+        Text(this.sensorSummary())
+          .fontSize(Theme.fs(12, this.largeFont))
+          .fontColor(this.sensorSummaryColor())
+      }
+      .width('100%')
+
+      Row({ space: 10 }) {
+        this.sensorCell('smoke', '烟雾', '火灾')
+        this.sensorCell('gas', '燃气', '泄漏')
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .padding(16)
+    .backgroundColor(this.cardBg())
+    .borderRadius(Theme.radius)
+    .border({ width: 1, color: this.cardBorder() })
+  }
+
+  @Builder
+  sensorCell(kind: string, name: string, hint: string) {
+    Column({ space: 4 }) {
+      Row() {
+        Text(name)
+          .fontSize(Theme.fs(13, this.largeFont))
+          .fontColor(Theme.muted)
+        Blank()
+        Text(this.sensorAlarm(kind) ? '●' : '○')
+          .fontSize(Theme.fs(12, this.largeFont))
+          .fontColor(this.sensorAlarm(kind) ? Theme.red : Theme.green)
+      }
+      .width('100%')
+
+      Text(this.sensorValue(kind))
+        .fontSize(Theme.fs(18, this.largeFont))
+        .fontWeight(FontWeight.Bold)
+        .fontColor(this.sensorAlarm(kind) ? Theme.red : Theme.navy)
+        .width('100%')
+
+      Text(this.sensorHint(kind, hint))
+        .fontSize(Theme.fs(11, this.largeFont))
+        .fontColor(Theme.muted)
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .width('100%')
+    }
+    .layoutWeight(1)
+    .padding(12)
+    .backgroundColor(this.sensorAlarm(kind) ? '#FFF1F0' : Theme.bg)
+    .borderRadius(12)
+    .border({ width: 1, color: this.sensorAlarm(kind) ? Theme.red : this.cardBorder() })
+  }
+
+  private sensorPayload(): SensorStatusPayload | null {
+    const snapshot: SensorSnapshot | null = this.snap;
+    if (snapshot === null || snapshot.sensors === undefined || snapshot.sensors === null) {
+      return null;
+    }
+    return snapshot.sensors;
+  }
+
+  private sensorItem(kind: string): SafetySensor | null {
+    const payload: SensorStatusPayload | null = this.sensorPayload();
+    if (payload === null) {
+      return null;
+    }
+    const items: SafetySensor[] = payload.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === kind) {
+        return items[i];
+      }
+    }
+    return null;
+  }
+
+  private sensorAlarm(kind: string): boolean {
+    const item: SafetySensor | null = this.sensorItem(kind);
+    return item !== null && item.status === 'alarm';
+  }
+
+  private sensorValue(kind: string): string {
+    const item: SafetySensor | null = this.sensorItem(kind);
+    return item === null ? '—' : item.statusText;
+  }
+
+  private sensorHint(kind: string, fallback: string): string {
+    const item: SafetySensor | null = this.sensorItem(kind);
+    if (item === null) {
+      return fallback + '监测未接入';
+    }
+    if (item.status === 'alarm') {
+      return item.ts === null ? '报警中，请立即查看' : ('报警 ' + shortTime(item.ts));
+    }
+    return item.lastAlarmTs === null ? '还没有报警记录' : ('上次 ' + shortTime(item.lastAlarmTs));
+  }
+
+  private sensorSummary(): string {
+    const payload: SensorStatusPayload | null = this.sensorPayload();
+    if (payload === null) {
+      return '未接入';
+    }
+    return payload.alarming > 0 ? ('报警 ' + payload.alarming + ' 项') : '正常';
+  }
+
+  private sensorSummaryColor(): string {
+    const payload: SensorStatusPayload | null = this.sensorPayload();
+    if (payload === null) {
+      return Theme.muted;
+    }
+    return payload.alarming > 0 ? Theme.red : Theme.green;
+  }
+
   build() {
     if (this.elderHome) {
       this.elderPage()
@@ -501,6 +623,8 @@ export struct HomeTab {
             })
           }
           .width('100%')
+
+          this.safetyCard()
 
           if (this.envWarning().length > 0) {
             Text(`⚠ ${this.envWarning()}，已生成环境提醒`)

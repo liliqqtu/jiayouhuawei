@@ -1,0 +1,25 @@
+<html>
+<body>
+<pre>
+<h1>礦ision Build Log</h1>
+<h2>Project:</h2>
+D:\绿深旗舰店测试板资料\模块资料\SYN6288语音合成模块资料（绿深旗舰店）\5.1、STC89C52单片机应用程序\SYN6288.uvproj
+Project File Date:  04/23/2020
+
+<h2>Output:</h2>
+Build target 'Target 1'
+compiling main.c...
+linking...
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_YS_SYN_SET?MAIN
+Program Size: data=9.0 xdata=87 code=966
+creating hex file from ".\Objects\SYN6288"...
+".\Objects\SYN6288" - 0 Error(s), 1 Warning(s).
+Build target 'Target 1'
+compiling main.c...
+linking...
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_YS_SYN_SET?MAIN
+Program Size: data=9.0 xdata=87 code=966
+creating hex file from ".\Objects\SYN6288"...
+".\Objects\SYN6288" - 0 Error(s), 1 Warning(s).
