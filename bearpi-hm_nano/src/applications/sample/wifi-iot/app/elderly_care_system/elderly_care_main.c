@@ -183,9 +183,10 @@ static void ElderlyCareTask(void *arg)
                      (uint32_t)g_care_data.current_level,
                      g_care_data.motion_events_today);
 
-            // 串口打印与网络发送
+            // 串口打印与网络发送 (同时推送本地串口、局域网UDP、华为云IoTDA设备影子)
             printf("%s\n", telemetry_buf);
             NetworkServiceSendTelemetry(telemetry_buf);
+            NetworkServiceReportHuaweiCloud(&g_care_data);
 
             if (new_level == ALERT_LEVEL_CRITICAL) {
                 printf("[ALERT] Level=CRITICAL, Type=%u\n", new_alert);

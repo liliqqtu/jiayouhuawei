@@ -1,4 +1,10 @@
-# 独居老人安全监测系统
+# 独居老人安全监测系统 (华为云 IoTDA 端云协同版)
+
+config_file = [ "//vendor/bearpi/bearpi_hm_nano/common/third_party/libs/libpahomqtt_static.a" ]
+copy("config") {
+  sources = config_file
+  outputs = [ "//out/hispark_pegasus/wifiiot_hispark_pegasus/libs/{{source_file_part}}" ]
+}
 
 static_library("elderly_care_app") {
     sources = [
@@ -10,7 +16,11 @@ static_library("elderly_care_app") {
         "voice_syn6288.c",
         "network_service.c",
         "elderly_care_main.c",
+        "//vendor/bearpi/bearpi_hm_nano/demo/D6_iot_cloud_oc/src/oc_mqtt.c",
+        "//vendor/bearpi/bearpi_hm_nano/demo/D6_iot_cloud_oc/src/oc_mqtt_profile_package.c",
     ]
+
+    cflags = [ "-Wno-unused-variable", "-Wno-unused-but-set-variable" ]
 
     include_dirs = [
         "//base/iot_hardware/peripheral/interfaces/kits",
@@ -19,7 +29,14 @@ static_library("elderly_care_app") {
         "//kernel/liteos_m/kal/cmsis",
         "//device/hisilicon/hispark_pegasus/sdk_liteos/third_party/lwip_sack/include",
         "//utils/native/lite/include",
+        "//third_party/cJSON",
+        "//vendor/bearpi/bearpi_hm_nano/demo/D6_iot_cloud_oc/include",
+        "//vendor/bearpi/bearpi_hm_nano/common/third_party/paho_mqtt/MQTTClient-C/src",
+        "//vendor/bearpi/bearpi_hm_nano/common/third_party/paho_mqtt/MQTTPacket/src",
         ".",
     ]
-    deps = [ "//vendor/bearpi/bearpi_hm_nano/common/iot_hardware_hals:bearpi_iot_hardware_hals" ]
+    deps = [
+        ":config",
+        "//vendor/bearpi/bearpi_hm_nano/common/iot_hardware_hals:bearpi_iot_hardware_hals",
+    ]
 }

@@ -18,12 +18,18 @@
 #include "elderly_care_config.h"
 #include "network_service.h"
 #include "voice_syn6288.h"
+#include "emergency_sos.h"
+#include "alarm_beeper.h"
+#include "cJSON.h"
+#include "oc_mqtt.h"
+#include "oc_mqtt_profile_package.h"
 
 #define NET_TASK_STACK_SIZE     (1024 * 8)
 #define NET_TASK_PRIORITY       osPriorityNormal
 
 static volatile int g_wifi_connected = 0;
 static volatile int g_network_ready = 0;
+static volatile int g_cloud_connected = 0;
 static volatile int g_scan_done = 0;
 static volatile int g_scan_num = 0;
 static struct netif *g_iface = NULL;
@@ -267,6 +273,189 @@ static int ScanAndMatchTargetAp(WifiDeviceConfig *apConfig, const char *target_s
     return matched;
 }
 
+// 云端控制指令响应回调 (处理华为云 IoTDA 下发的指令，如远程消警、音量调节)
+static void OnCloudCommandReceived(uint8_t *recv_data, uint32_t recv_size, uint8_t **resp_data, uint32_t *resp_size)
+{
+    if (recv_data == NULL || recv_size == 0) {
+        *resp_data = NULL;
+        *resp_size = 0;
+        return;
+    }
+
+    char *buf = malloc(recv_size + 1);
+    if (buf == NULL) {
+        *resp_data = NULL;
+        *resp_size = 0;
+        return;
+    }
+    memcpy(buf, recv_data, recv_size);
+    buf[recv_size] = '\0';
+
+    printf("\n[HUAWEI_CLOUD] >>> Command received from Cloud! <<<\n");
+    printf("[HUAWEI_CLOUD] Raw JSON: %s\n", buf);
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root != NULL) {
+        cJSON *cmd_item = cJSON_GetObjectItem(root, "command_name");
+        cJSON *paras_item = cJSON_GetObjectItem(root, "paras");
+
+        if (cmd_item != NULL && cJSON_IsString(cmd_item)) {
+            const char *cmd_name = cmd_item->valuestring;
+            printf("[HUAWEI_CLOUD] Command Name: '%s'\n", cmd_name);
+
+            // 1. 远程消警命令 ResetAlert
+            if (strcmp(cmd_name, "ResetAlert") == 0) {
+                printf("[HUAWEI_CLOUD] Remote ResetAlert executed! Cancelling alarm...\n");
+                EmergencySosClear();
+                AlarmBeeperMute();
+                VoicePlayPresetAlert(VOICE_ALERT_CLEAR);
+            }
+            // 2. 远程调节语音音量 SetVoiceVolume
+            else if (strcmp(cmd_name, "SetVoiceVolume") == 0) {
+                if (paras_item != NULL) {
+                    cJSON *vol_item = cJSON_GetObjectItem(paras_item, "volume");
+                    if (vol_item != NULL && cJSON_IsNumber(vol_item)) {
+                        int new_vol = vol_item->valueint;
+                        if (new_vol >= 0 && new_vol <= 16) {
+                            VoiceSetVolume((uint8_t)new_vol);
+                            printf("[HUAWEI_CLOUD] Voice volume updated to: %d\n", new_vol);
+                        }
+                    }
+                }
+            }
+        }
+        cJSON_Delete(root);
+    }
+    free(buf);
+
+    *resp_data = NULL;
+    *resp_size = 0;
+}
+
+int NetworkServiceReportHuaweiCloud(const elderly_care_data_t *data)
+{
+    if (!g_cloud_connected || data == NULL) {
+        return -1;
+    }
+
+    oc_mqtt_profile_service_t service;
+    oc_mqtt_profile_kv_t kv_sos_active;
+    oc_mqtt_profile_kv_t kv_sos_source;
+    oc_mqtt_profile_kv_t kv_motion_active;
+    oc_mqtt_profile_kv_t kv_no_motion_sec;
+    oc_mqtt_profile_kv_t kv_motion_count;
+    oc_mqtt_profile_kv_t kv_door_open;
+    oc_mqtt_profile_kv_t kv_temp;
+    oc_mqtt_profile_kv_t kv_humi;
+    oc_mqtt_profile_kv_t kv_smoke;
+    oc_mqtt_profile_kv_t kv_alert_level;
+    oc_mqtt_profile_kv_t kv_alert_type;
+    oc_mqtt_profile_kv_t kv_voice_vol;
+
+    int val_sos_active = data->sos_active ? 1 : 0;
+    int val_sos_source = (int)data->sos_source;
+    int val_motion_active = data->motion_active ? 1 : 0;
+    int val_no_motion_sec = (int)data->seconds_since_last_motion;
+    int val_motion_count = (int)data->motion_events_today;
+    int val_door_open = data->door_open ? 1 : 0;
+    double val_temp = (double)data->temperature;
+    double val_humi = (double)data->humidity;
+    double val_smoke = 0.05; // MQ-2 烟雾模拟/采样电压
+    int val_alert_level = (int)data->current_level;
+    int val_alert_type = (int)data->current_alert;
+    int val_voice_vol = (int)data->voice_volume;
+
+    service.event_time = NULL;
+    service.service_id = "ElderlyCare";
+    service.service_property = &kv_sos_active;
+    service.nxt = NULL;
+
+    // 1. SosActive
+    kv_sos_active.key = "SosActive";
+    kv_sos_active.value = &val_sos_active;
+    kv_sos_active.type = EN_OC_MQTT_PROFILE_VALUE_INT;
+    kv_sos_active.nxt = &kv_sos_source;
+
+    // 2. SosSource
+    kv_sos_source.key = "SosSource";
+    kv_sos_source.value = &val_sos_source;
+    kv_sos_source.type = EN_OC_MQTT_PROFILE_VALUE_INT;
+    kv_sos_source.nxt = &kv_motion_active;
+
+    // 3. MotionActive
+    kv_motion_active.key = "MotionActive";
+    kv_motion_active.value = &val_motion_active;
+    kv_motion_active.type = EN_OC_MQTT_PROFILE_VALUE_INT;
+    kv_motion_active.nxt = &kv_no_motion_sec;
+
+    // 4. SecondsSinceMotion
+    kv_no_motion_sec.key = "SecondsSinceMotion";
+    kv_no_motion_sec.value = &val_no_motion_sec;
+    kv_no_motion_sec.type = EN_OC_MQTT_PROFILE_VALUE_INT;
+    kv_no_motion_sec.nxt = &kv_motion_count;
+
+    // 5. MotionEventsToday
+    kv_motion_count.key = "MotionEventsToday";
+    kv_motion_count.value = &val_motion_count;
+    kv_motion_count.type = EN_OC_MQTT_PROFILE_VALUE_INT;
+    kv_motion_count.nxt = &kv_door_open;
+
+    // 6. DoorOpen
+    kv_door_open.key = "DoorOpen";
+    kv_door_open.value = &val_door_open;
+    kv_door_open.type = EN_OC_MQTT_PROFILE_VALUE_INT;
+    kv_door_open.nxt = &kv_temp;
+
+    // 7. Temperature
+    kv_temp.key = "Temperature";
+    kv_temp.value = &val_temp;
+    kv_temp.type = EN_OC_MQTT_PROFILE_VALUE_FLOAT;
+    kv_temp.nxt = &kv_humi;
+
+    // 8. Humidity
+    kv_humi.key = "Humidity";
+    kv_humi.value = &val_humi;
+    kv_humi.type = EN_OC_MQTT_PROFILE_VALUE_FLOAT;
+    kv_humi.nxt = &kv_smoke;
+
+    // 9. SmokeVoltage
+    kv_smoke.key = "SmokeVoltage";
+    kv_smoke.value = &val_smoke;
+    kv_smoke.type = EN_OC_MQTT_PROFILE_VALUE_FLOAT;
+    kv_smoke.nxt = &kv_alert_level;
+
+    // 10. AlertLevel
+    kv_alert_level.key = "AlertLevel";
+    kv_alert_level.value = &val_alert_level;
+    kv_alert_level.type = EN_OC_MQTT_PROFILE_VALUE_INT;
+    kv_alert_level.nxt = &kv_alert_type;
+
+    // 11. AlertType
+    kv_alert_type.key = "AlertType";
+    kv_alert_type.value = &val_alert_type;
+    kv_alert_type.type = EN_OC_MQTT_PROFILE_VALUE_INT;
+    kv_alert_type.nxt = &kv_voice_vol;
+
+    // 12. VoiceVolume
+    kv_voice_vol.key = "VoiceVolume";
+    kv_voice_vol.value = &val_voice_vol;
+    kv_voice_vol.type = EN_OC_MQTT_PROFILE_VALUE_INT;
+    kv_voice_vol.nxt = NULL;
+
+    int ret = oc_mqtt_profile_propertyreport(CFG_OC_DEVICE_ID, &service);
+    if (ret == 0) {
+        printf("[HUAWEI_CLOUD] >>> Property reported OK (IoTDA Shadow Updated) <<<\n");
+    } else {
+        printf("[HUAWEI_CLOUD] Property report failed! err=%d\n", ret);
+    }
+    return ret;
+}
+
+bool NetworkServiceIsCloudConnected(void)
+{
+    return (g_cloud_connected != 0);
+}
+
 // Wi-Fi 任务
 static void NetworkTask(void *arg)
 {
@@ -344,6 +533,21 @@ static void NetworkTask(void *arg)
                     if (dhcp_ok) {
                         printf("\n[NETWORK] DHCP Success! IP: %s\n\n", ip4addr_ntoa(netif_ip4_addr(g_iface)));
                         g_network_ready = 1;
+
+                        // 初始化并连接华为云 IoTDA
+                        printf("[HUAWEI_CLOUD] Connecting to Huawei Cloud IoTDA (%s:%d)...\n", CFG_OC_SERVER_IP, CFG_OC_SERVER_PORT);
+                        device_info_init(CFG_OC_CLIENT_ID, CFG_OC_USERNAME, CFG_OC_PASSWORD);
+                        int oc_ret = oc_mqtt_init();
+                        if (oc_ret == 0) {
+                            printf("\n=======================================================\n");
+                            printf("[HUAWEI_CLOUD] >>> SUCCESS: Connected to Huawei Cloud IoTDA! <<<\n");
+                            printf("=======================================================\n\n");
+                            oc_set_cmd_rsp_cb(OnCloudCommandReceived);
+                            g_cloud_connected = 1;
+                        } else {
+                            printf("[HUAWEI_CLOUD] oc_mqtt_init failed ret=%d\n", oc_ret);
+                            g_cloud_connected = 0;
+                        }
 
                         // 补传离线数据
                         NetworkServiceFlushCache();

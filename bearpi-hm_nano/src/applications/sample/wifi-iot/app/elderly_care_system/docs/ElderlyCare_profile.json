@@ -1,0 +1,152 @@
+{
+  "services": [
+    {
+      "service_id": "ElderlyCare",
+      "service_type": "ElderlyCare",
+      "description": "独居老人居家健康与环境监测核心服务",
+      "properties": [
+        {
+          "property_name": "SosActive",
+          "data_type": "int",
+          "required": false,
+          "min": "0",
+          "max": "1",
+          "method": "R",
+          "description": "紧急求助状态(0=正常,1=求助中)"
+        },
+        {
+          "property_name": "SosSource",
+          "data_type": "int",
+          "required": false,
+          "min": "0",
+          "max": "3",
+          "method": "R",
+          "description": "求助来源(0=无,1=板载F1,2=无线遥控,3=远程下发)"
+        },
+        {
+          "property_name": "MotionActive",
+          "data_type": "int",
+          "required": false,
+          "min": "0",
+          "max": "1",
+          "method": "R",
+          "description": "红外人体活动检测(0=无,1=有人)"
+        },
+        {
+          "property_name": "SecondsSinceMotion",
+          "data_type": "int",
+          "required": false,
+          "min": "0",
+          "max": "86400",
+          "method": "R",
+          "description": "距离上次活动秒数"
+        },
+        {
+          "property_name": "MotionEventsToday",
+          "data_type": "int",
+          "required": false,
+          "min": "0",
+          "max": "9999",
+          "method": "R",
+          "description": "今日累计活动次数"
+        },
+        {
+          "property_name": "DoorOpen",
+          "data_type": "int",
+          "required": false,
+          "min": "0",
+          "max": "1",
+          "method": "R",
+          "description": "门窗磁开关状态(0=关,1=开)"
+        },
+        {
+          "property_name": "Temperature",
+          "data_type": "decimal",
+          "required": false,
+          "min": "-20.0",
+          "max": "60.0",
+          "method": "R",
+          "step": "0.1",
+          "unit": "℃",
+          "description": "室内环境温度"
+        },
+        {
+          "property_name": "Humidity",
+          "data_type": "decimal",
+          "required": false,
+          "min": "0.0",
+          "max": "100.0",
+          "method": "R",
+          "step": "0.1",
+          "unit": "%",
+          "description": "室内相对湿度"
+        },
+        {
+          "property_name": "SmokeVoltage",
+          "data_type": "decimal",
+          "required": false,
+          "min": "0.0",
+          "max": "3.3",
+          "method": "R",
+          "step": "0.01",
+          "unit": "V",
+          "description": "MQ-2 烟雾模拟量电压"
+        },
+        {
+          "property_name": "AlertLevel",
+          "data_type": "int",
+          "required": false,
+          "min": "0",
+          "max": "3",
+          "method": "R",
+          "description": "当前告警等级(0=正常,1=提示,2=预警,3=严重)"
+        },
+        {
+          "property_name": "AlertType",
+          "data_type": "int",
+          "required": false,
+          "min": "0",
+          "max": "6",
+          "method": "R",
+          "description": "告警类型(0=无,1=SOS,2=未活动,3=门未关,4=高温,5=低温,6=烟雾)"
+        },
+        {
+          "property_name": "VoiceVolume",
+          "data_type": "int",
+          "required": false,
+          "min": "0",
+          "max": "16",
+          "method": "RW",
+          "description": "SYN6288播报音量"
+        }
+      ],
+      "commands": [
+        {
+          "command_name": "ResetAlert",
+          "paras": [
+            {
+              "para_name": "operator",
+              "data_type": "string",
+              "required": true,
+              "max_length": 32,
+              "description": "消警操作人"
+            }
+          ]
+        },
+        {
+          "command_name": "SetVoiceVolume",
+          "paras": [
+            {
+              "para_name": "volume",
+              "data_type": "int",
+              "required": true,
+              "min": "0",
+              "max": "16",
+              "description": "音量值(0~16)"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

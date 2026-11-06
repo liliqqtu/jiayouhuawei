@@ -7,6 +7,20 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "elderly_care_config.h"
+
+/**
+ * @brief 将老人安全监测结构体数据上报至华为云 IoTDA 设备影子
+ * @param data 监测数据结构体指针
+ * @return 0 成功，负数失败
+ */
+int NetworkServiceReportHuaweiCloud(const elderly_care_data_t *data);
+
+/**
+ * @brief 检查华为云 IoTDA 连接状态
+ * @return true 已连接，false 未连接
+ */
+bool NetworkServiceIsCloudConnected(void);
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,6 +72,19 @@ int NetworkServiceGetCacheCount(void);
  * @return 0 成功处理，负数未识别或参数错误
  */
 int NetworkServiceProcessCommand(const char *cmd_str, int cmd_len, char *ack_buf, int ack_buf_size);
+
+/**
+ * @brief 将老人安全监测结构体数据上报至华为云 IoTDA 设备影子
+ * @param data 监测数据结构体指针
+ * @return 0 成功，负数失败
+ */
+int NetworkServiceReportHuaweiCloud(const elderly_care_data_t *data);
+
+/**
+ * @brief 检查华为云 IoTDA 连接状态
+ * @return true 已连接，false 未连接
+ */
+bool NetworkServiceIsCloudConnected(void);
 
 #ifdef __cplusplus
 }
