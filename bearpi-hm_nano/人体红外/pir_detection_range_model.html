@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E53_IS1 人体红外传感器检测范围与建模仿真</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      user-select: none;
+    }
+    .slider-accent {
+      accent-color: #0284c7;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.05);
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 3px;
+    }
+    canvas {
+      image-rendering: auto;
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] min-h-screen p-4 lg:p-6 custom-scrollbar">
+
+  <div class="max-w-7xl mx-auto space-y-5">
+    
+    <!-- 顶部标题卡片 -->
+    <header class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div class="space-y-1">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">
+            BearPi-HM Nano 外设仿真
+          </span>
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+            菲涅尔光学透镜建模
+          </span>
+        </div>
+        <h1 class="text-xl md:text-2xl font-bold tracking-tight">E53_IS1 人体热释电红外 (PIR) 感应空间与盲区三维建模</h1>
+        <p class="text-sm text-[var(--muted-foreground)]">
+          双元热释电元件 + 多层多区菲涅尔透镜（Fresnel Lens）红外光束切割几何模型
+        </p>
+      </div>
+
+      <!-- 实时状态胶囊 -->
+      <div class="flex items-center gap-3 bg-[var(--background)] border border-[var(--border)] rounded-xl px-4 py-2.5">
+        <div class="flex items-center gap-2">
+          <span id="sensor-led-indicator" class="w-3 h-3 rounded-full bg-slate-300 transition-colors duration-200"></span>
+          <span id="sensor-status-text" class="text-xs font-semibold">待机静默 (GPIO_7 = 0)</span>
+        </div>
+        <div class="h-4 w-px bg-[var(--border)]"></div>
+        <div class="text-xs text-[var(--muted-foreground)] font-mono" id="realtime-metric-summary">
+          覆盖角: 100° × 80° | 半径: 5.0m
+        </div>
+      </div>
+    </header>
+
+    <!-- 视图切换与主工作区 -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+      <!-- 左侧：3D/2D 画布视窗 (占 8 列) -->
+      <div class="lg:col-span-8 space-y-4">
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm flex flex-col">
+          
+          <!-- 画布顶部控制栏 -->
+          <div class="flex flex-wrap items-center justify-between pb-3 border-b border-[var(--border)] gap-2">
+            <div class="flex items-center gap-1.5 p-1 bg-[var(--background)] rounded-xl border border-[var(--border)] text-xs font-medium">
+              <button id="btn-view-3d" onclick="switchView('3d')" class="px-3 py-1.5 rounded-lg transition-all bg-sky-600 text-white shadow-xs font-semibold">
+                🌐 3D 空间锥体透视
+              </button>
+              <button id="btn-view-top" onclick="switchView('top')" class="px-3 py-1.5 rounded-lg transition-all text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                📐 水平俯视图 (100°)
+              </button>
+              <button id="btn-view-side" onclick="switchView('side')" class="px-3 py-1.5 rounded-lg transition-all text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                📏 垂直侧视图 (盲区解析)
+              </button>
+            </div>
+
+            <!-- 动态演示控制 -->
+            <div class="flex items-center gap-2">
+              <button id="btn-sim-walk" onclick="toggleWalkingSimulation()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center gap-1.5">
+                <span>🚶 模拟老人横穿走动</span>
+              </button>
+              <button id="btn-reset-pos" onclick="resetHumanPosition()" class="px-2.5 py-1.5 rounded-lg text-xs border border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--background)] transition-colors">
+                重置位置
+              </button>
+            </div>
+          </div>
+
+          <!-- 主绘图 Canvas 容器 -->
+          <div class="relative w-full aspect-video min-h-[420px] max-h-[520px] mt-3 rounded-xl overflow-hidden bg-gradient-to-b from-slate-950 to-slate-900 border border-slate-800 flex items-center justify-center">
+            <canvas id="pirCanvas" class="w-full h-full cursor-grab active:cursor-grabbing"></canvas>
+
+            <!-- 悬浮微标指南 -->
+            <div class="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur-md border border-slate-700/60 rounded-lg px-3 py-1.5 text-xs text-slate-300 pointer-events-none flex items-center gap-2">
+              <span class="inline-block w-2.5 h-2.5 rounded-full bg-cyan-400"></span> 强灵敏区 (1~3m)
+              <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 ml-1"></span> 边界区 (3~5m)
+              <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-400/80 ml-1"></span> 下方盲区 (死角)
+            </div>
+
+            <!-- 拖拽视角提示 (仅在3D模式显示) -->
+            <div id="drag-hint" class="absolute top-3 right-3 bg-slate-900/70 border border-slate-700/50 rounded-md px-2 py-1 text-[11px] text-slate-400 pointer-events-none">
+              🖱️ 按住鼠标左键可 360° 旋转空间视角
+            </div>
+          </div>
+
+          <!-- 底部信号实时示波波形 -->
+          <div class="mt-3 p-3 bg-[var(--background)] border border-[var(--border)] rounded-xl flex items-center justify-between gap-4">
+            <div class="w-28 text-xs text-[var(--muted-foreground)] leading-tight">
+              <div class="font-semibold text-[var(--foreground)]">GPIO_7 信号采样</div>
+              <div>热释电差分电荷 $\Delta V$</div>
+            </div>
+            <div class="flex-1 h-9 bg-slate-950 rounded-lg border border-slate-800 overflow-hidden relative">
+              <canvas id="scopeCanvas" class="w-full h-full"></canvas>
+            </div>
+            <div id="trigger-badge" class="px-2.5 py-1 rounded text-xs font-mono font-bold bg-slate-800 text-slate-400 transition-all">
+              LOW (0V)
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 右侧：工程参数与安装测算控制台 (占 4 列) -->
+      <div class="lg:col-span-4 space-y-4">
+
+        <!-- 参数调节卡片 -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm space-y-4">
+          <h2 class="text-sm font-bold uppercase tracking-wider text-[var(--muted-foreground)] flex items-center justify-between">
+            <span>几何安装参数配置</span>
+            <span class="text-sky-600 font-mono text-xs">实时联动测算</span>
+          </h2>
+
+          <!-- 安装高度 Slider -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs font-medium">
+              <span>传感器安装高度 ($H$)</span>
+              <span id="val-height" class="font-mono font-bold text-sky-600">1.8 m</span>
+            </div>
+            <input type="range" id="input-height" min="1.0" max="2.8" step="0.1" value="1.8" class="w-full slider-accent" oninput="updateParams()">
+            <div class="flex justify-between text-[11px] text-[var(--muted-foreground)]">
+              <span>1.0m (桌面/床头)</span>
+              <span>1.8m (推荐壁挂)</span>
+              <span>2.8m (吸顶)</span>
+            </div>
+          </div>
+
+          <!-- 传感器下倾俯仰角 Slider -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs font-medium">
+              <span>传感器俯角倾斜 ($\theta$)</span>
+              <span id="val-pitch" class="font-mono font-bold text-sky-600">15 °</span>
+            </div>
+            <input type="range" id="input-pitch" min="0" max="45" step="1" value="15" class="w-full slider-accent" oninput="updateParams()">
+            <div class="flex justify-between text-[11px] text-[var(--muted-foreground)]">
+              <span>0° (水平垂直正对)</span>
+              <span>15° (消除地脚盲区)</span>
+              <span>45° (下压短距)</span>
+            </div>
+          </div>
+
+          <!-- 最大探测半径 Slider -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs font-medium">
+              <span>远端探测极限距离 ($R$)</span>
+              <span id="val-range" class="font-mono font-bold text-sky-600">5.0 m</span>
+            </div>
+            <input type="range" id="input-range" min="2.0" max="6.0" step="0.2" value="5.0" class="w-full slider-accent" oninput="updateParams()">
+            <div class="flex justify-between text-[11px] text-[var(--muted-foreground)]">
+              <span>2.0m (小卫生间)</span>
+              <span>5.0m (E53标准)</span>
+              <span>6.0m (开阔客厅)</span>
+            </div>
+          </div>
+
+          <!-- 核心工程测算指标矩阵 -->
+          <div class="pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2 text-xs">
+            <div class="p-2.5 rounded-xl bg-[var(--background)] border border-[var(--border)]">
+              <div class="text-[var(--muted-foreground)] text-[11px]">水平最大跨度 ($W$)</div>
+              <div id="stat-width" class="text-sm font-bold font-mono text-[var(--foreground)] mt-0.5">7.66 m</div>
+              <div class="text-[10px] text-[var(--muted-foreground)] mt-0.5">@5.0m 远端扇形边缘</div>
+            </div>
+
+            <div class="p-2.5 rounded-xl bg-[var(--background)] border border-[var(--border)]">
+              <div class="text-[var(--muted-foreground)] text-[11px]">地面覆盖投影面积</div>
+              <div id="stat-area" class="text-sm font-bold font-mono text-[var(--foreground)] mt-0.5">21.8 m²</div>
+              <div class="text-[10px] text-[var(--muted-foreground)] mt-0.5">有效监控起居空间</div>
+            </div>
+
+            <div class="p-2.5 rounded-xl bg-[var(--background)] border border-[var(--border)]">
+              <div class="text-[var(--muted-foreground)] text-[11px]">墙脚下盲区半径 ($D_{blind}$)</div>
+              <div id="stat-blind" class="text-sm font-bold font-mono text-amber-600 mt-0.5">0.65 m</div>
+              <div class="text-[10px] text-[var(--muted-foreground)] mt-0.5">传感器垂直正下方死角</div>
+            </div>
+
+            <div class="p-2.5 rounded-xl bg-[var(--background)] border border-[var(--border)]">
+              <div class="text-[var(--muted-foreground)] text-[11px]">最佳敏感移动方向</div>
+              <div class="text-sm font-bold font-mono text-emerald-600 mt-0.5">横切走动 ↔</div>
+              <div class="text-[10px] text-[var(--muted-foreground)] mt-0.5">温差电荷变化率最大</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 专家级安装建议卡片 -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm space-y-3 text-xs leading-relaxed">
+          <h3 class="font-bold text-[var(--foreground)] flex items-center gap-1.5">
+            <span class="text-amber-500">💡</span> 居家适老化安装与避坑指引
+          </h3>
+          <ul class="space-y-2 text-[var(--muted-foreground)] list-disc pl-4">
+            <li>
+              <strong class="text-[var(--foreground)]">推荐安装高度：1.8米 ~ 2.0米</strong>：
+              此高度人眼难以平视破坏，且能完整覆盖站立（1.6m）、坐姿（0.9m）以及跌倒在地的躯干。
+            </li>
+            <li>
+              <strong class="text-[var(--foreground)]">必须预留 10°~15° 下俯角</strong>：
+              平放正对安装会导致传感器下方形成超过 1.5 米的“近墙死角”；倾斜 15° 后可将下盲区压缩至 0.6 米以内，老人贴墙摔倒亦能敏锐捕捉。
+            </li>
+            <li>
+              <strong class="text-[var(--foreground)]">避开热扰动源</strong>：
+              严禁正对空调出风口、电暖气片或阳光直射玻璃窗，气流突变容易造成假阳性误报。
+            </li>
+          </ul>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    // --- 状态与参数 ---
+    let currentView = '3d'; // '3d', 'top', 'side'
+    let height = 1.8;       // 米
+    let pitch = 15;         // 度
+    let range = 5.0;        // 米
+    const fovH = 100;       // 水平角度 100°
+    const fovV = 80;        // 垂直角度 80°
+
+    // 3D 旋转视角控制 (Euler Angles)
+    let rotX = 25 * Math.PI / 180;
+    let rotY = -35 * Math.PI / 180;
+    let isDragging = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    // 老人走动模拟器状态
+    let isSimulating = false;
+    let humanPos = { x: -3.0, z: 3.5, vx: 0.04, vz: -0.01 }; // 相对传感器的物理坐标(米)
+    let isDetected = false;
+    let scopeData = new Array(80).fill(0);
+
+    const canvas = document.getElementById('pirCanvas');
+    const ctx = canvas.getContext('2d');
+    const scopeCanvas = document.getElementById('scopeCanvas');
+    const scopeCtx = scopeCanvas.getContext('2d');
+
+    // 初始化画板分辨率
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+
+      const sRect = scopeCanvas.getBoundingClientRect();
+      scopeCanvas.width = sRect.width * dpr;
+      scopeCanvas.height = sRect.height * dpr;
+      scopeCtx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      draw();
+    });
+
+    // 交互拖拽控制
+    canvas.addEventListener('mousedown', (e) => {
+      if (currentView !== '3d') return;
+      isDragging = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    });
+    window.addEventListener('mouseup', () => isDragging = false);
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging || currentView !== '3d') return;
+      const dx = e.clientX - lastMouseX;
+      const dy = e.clientY - lastMouseY;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+      rotY += dx * 0.008;
+      rotX += dy * 0.008;
+      rotX = Math.max(0.1, Math.min(Math.PI / 2.2, rotX)); // 限制俯仰
+      draw();
+    });
+
+    // 参数更新
+    function updateParams() {
+      height = parseFloat(document.getElementById('input-height').value);
+      pitch = parseFloat(document.getElementById('input-pitch').value);
+      range = parseFloat(document.getElementById('input-range').value);
+
+      document.getElementById('val-height').innerText = height.toFixed(1) + ' m';
+      document.getElementById('val-pitch').innerText = pitch + ' °';
+      document.getElementById('val-range').innerText = range.toFixed(1) + ' m';
+
+      // 实时几何测算
+      const radH = (fovH / 2) * Math.PI / 180;
+      const maxWidth = 2 * range * Math.sin(radH);
+      const area = (fovH / 360) * Math.PI * (range * range);
+      
+      // 下盲区距离计算: 垂直半角为 40°，倾角为 pitch
+      // 垂直最下边缘光束与地面的夹角 = 90 - (40 + pitch)
+      const bottomAngleDeg = 90 - (fovV / 2 + pitch);
+      let blindDist = 0;
+      if (bottomAngleDeg > 0) {
+        blindDist = height / Math.tan((fovV / 2 + pitch) * Math.PI / 180);
+      } else {
+        blindDist = 0.1; // 直接打在墙脚
+      }
+      blindDist = Math.max(0.2, Math.min(blindDist, 3.0));
+
+      document.getElementById('stat-width').innerText = maxWidth.toFixed(2) + ' m';
+      document.getElementById('stat-area').innerText = area.toFixed(1) + ' m²';
+      document.getElementById('stat-blind').innerText = blindDist.toFixed(2) + ' m';
+      document.getElementById('realtime-metric-summary').innerText = 
+        `覆盖角: ${fovH}° × ${fovV}° | 半径: ${range.toFixed(1)}m | 盲区: ${blindDist.toFixed(2)}m`;
+
+      draw();
+    }
+
+    // 视图切换
+    function switchView(view) {
+      currentView = view;
+      ['3d', 'top', 'side'].forEach(v => {
+        const btn = document.getElementById(`btn-view-${v}`);
+        if (v === view) {
+          btn.className = "px-3 py-1.5 rounded-lg transition-all bg-sky-600 text-white shadow-xs font-semibold";
+        } else {
+          btn.className = "px-3 py-1.5 rounded-lg transition-all text-[var(--muted-foreground)] hover:text-[var(--foreground)]";
+        }
+      });
+      document.getElementById('drag-hint').style.display = (view === '3d') ? 'block' : 'none';
+      draw();
+    }
+
+    function toggleWalkingSimulation() {
+      isSimulating = !isSimulating;
+      const btn = document.getElementById('btn-sim-walk');
+      if (isSimulating) {
+        btn.innerHTML = "<span>⏸️ 暂停老人走动</span>";
+        btn.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
+        btn.classList.add('bg-amber-600', 'hover:bg-amber-700');
+      } else {
+        btn.innerHTML = "<span>🚶 模拟老人横穿走动</span>";
+        btn.classList.remove('bg-amber-600', 'hover:bg-amber-700');
+        btn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+      }
+    }
+
+    function resetHumanPosition() {
+      humanPos = { x: -3.0, z: 3.5, vx: 0.04, vz: -0.01 };
+      draw();
+    }
+
+    // 检测判定逻辑: 人体是否落在光束锥体内部
+    function checkDetection() {
+      const dist = Math.hypot(humanPos.x, humanPos.z);
+      if (dist < 0.3 || dist > range) return false;
+
+      // 计算水平角
+      const angleH = Math.atan2(humanPos.x, humanPos.z) * 180 / Math.PI;
+      if (Math.abs(angleH) > fovH / 2) return false;
+
+      // 考虑盲区
+      const bottomAngle = (fovV / 2 + pitch) * Math.PI / 180;
+      const blindDist = height / Math.tan(bottomAngle);
+      if (dist < blindDist) return false;
+
+      return true;
+    }
+
+    // 3D 点投影计算
+    function project3D(x, y, z, cx, cy, scale) {
+      // 旋转 Y (水平旋转)
+      const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
+      const x1 = x * cosY - z * sinY;
+      const z1 = x * sinY + z * cosY;
+
+      // 旋转 X (仰俯角)
+      const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+      const y2 = y * cosX - z1 * sinX;
+      const z2 = y * sinX + z1 * cosX;
+
+      // 透视投影
+      const cameraDist = 8.5;
+      const fov = 480;
+      const pz = z2 + cameraDist;
+      const px = cx + (x1 * fov) / pz;
+      const py = cy - (y2 * fov) / pz;
+
+      return { px, py, zIndex: z2 };
+    }
+
+    // 主绘制入口
+    function draw() {
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+
+      ctx.clearRect(0, 0, w, h);
+
+      if (currentView === '3d') {
+        draw3DView(w, h);
+      } else if (currentView === 'top') {
+        drawTopView(w, h);
+      } else {
+        drawSideView(w, h);
+      }
+
+      drawScope();
+    }
+
+    // 绘制 3D 空间锥体
+    function draw3DView(w, h) {
+      const cx = w / 2;
+      const cy = h * 0.68;
+      const scale = 50;
+
+      // 1. 绘制地面网格 (5m x 5m)
+      ctx.lineWidth = 1;
+      for (let x = -4; x <= 4; x += 1) {
+        ctx.strokeStyle = (x === 0) ? "rgba(14, 165, 233, 0.4)" : "rgba(255, 255, 255, 0.08)";
+        ctx.beginPath();
+        const p1 = project3D(x, 0, 0, cx, cy, scale);
+        const p2 = project3D(x, 0, 5.5, cx, cy, scale);
+        ctx.moveTo(p1.px, p1.py);
+        ctx.lineTo(p2.px, p2.py);
+        ctx.stroke();
+      }
+      for (let z = 0; z <= 5.5; z += 1) {
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+        ctx.beginPath();
+        const p1 = project3D(-4, 0, z, cx, cy, scale);
+        const p2 = project3D(4, 0, z, cx, cy, scale);
+        ctx.moveTo(p1.px, p1.py);
+        ctx.lineTo(p2.px, p2.py);
+        ctx.stroke();
+      }
+
+      // 2. 绘制传感器安装立柱/墙面
+      const sBase = project3D(0, 0, 0, cx, cy, scale);
+      const sPos = project3D(0, height, 0, cx, cy, scale);
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(sBase.px, sBase.py);
+      ctx.lineTo(sPos.px, sPos.py);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 传感器模块本体 (E53_IS1 外形示意)
+      ctx.fillStyle = "#0284c7";
+      ctx.beginPath();
+      ctx.arc(sPos.px, sPos.py, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(sPos.px, sPos.py, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 3. 绘制 3D 辐射锥体（多束光纤模拟菲涅尔透镜分区）
+      const numRaysH = 9;
+      const numTiers = 3;
+      const halfH = (fovH / 2) * Math.PI / 180;
+      const pitchRad = pitch * Math.PI / 180;
+      const halfV = (fovV / 2) * Math.PI / 180;
+
+      // 锥体半透明填充 (地面投影面)
+      ctx.fillStyle = "rgba(14, 165, 233, 0.12)";
+      ctx.beginPath();
+      const originP = project3D(0, height, 0, cx, cy, scale);
+      ctx.moveTo(originP.px, originP.py);
+
+      const floorPoints = [];
+      for (let i = 0; i <= 20; i++) {
+        const ang = -halfH + (i / 20) * (2 * halfH);
+        const fx = Math.sin(ang) * range;
+        const fz = Math.cos(ang) * range;
+        floorPoints.push(project3D(fx, 0, fz, cx, cy, scale));
+      }
+
+      floorPoints.forEach(p => ctx.lineTo(p.px, p.py));
+      ctx.closePath();
+      ctx.fill();
+
+      // 绘制各层感应光束线条
+      for (let t = 0; t < numTiers; t++) {
+        const tierFactor = (t + 1) / numTiers;
+        const curR = range * tierFactor;
+        ctx.strokeStyle = (t === numTiers - 1) ? "rgba(14, 165, 233, 0.6)" : "rgba(14, 165, 233, 0.25)";
+        ctx.lineWidth = 1;
+
+        ctx.beginPath();
+        for (let i = 0; i <= numRaysH; i++) {
+          const ang = -halfH + (i / numRaysH) * (2 * halfH);
+          const rx = Math.sin(ang) * curR;
+          const rz = Math.cos(ang) * curR;
+          // 光束受下俯角与垂直扇区影响
+          const ry = Math.max(0, height - curR * Math.tan(pitchRad));
+          const p = project3D(rx, ry, rz, cx, cy, scale);
+          if (i === 0) ctx.moveTo(p.px, p.py);
+          else ctx.lineTo(p.px, p.py);
+
+          // 从传感器原点拉出射线
+          if (t === numTiers - 1 && (i === 0 || i === numRaysH || i === Math.floor(numRaysH / 2))) {
+            ctx.save();
+            ctx.strokeStyle = "rgba(14, 165, 233, 0.4)";
+            ctx.beginPath();
+            ctx.moveTo(originP.px, originP.py);
+            ctx.lineTo(p.px, p.py);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+        ctx.stroke();
+      }
+
+      // 4. 绘制老人虚拟化身
+      drawHumanAvatar(cx, cy, scale);
+    }
+
+    // 绘制俯视图 (Top View)
+    function drawTopView(w, h) {
+      const cx = w / 2;
+      const cy = h * 0.15;
+      const scale = (h * 0.7) / range;
+
+      // 标尺与距离同心圆弧 (1m ~ 5m)
+      ctx.lineWidth = 1;
+      for (let r = 1; r <= Math.ceil(range); r++) {
+        const rad = r * scale;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+        ctx.beginPath();
+        ctx.arc(cx, cy, rad, 0, Math.PI);
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+        ctx.font = "10px monospace";
+        ctx.fillText(`${r}m`, cx + 6, cy + rad - 4);
+      }
+
+      // 水平 100° 扇形覆盖面
+      const halfH = (fovH / 2) * Math.PI / 180;
+      const startAngle = Math.PI / 2 - halfH;
+      const endAngle = Math.PI / 2 + halfH;
+
+      ctx.fillStyle = "rgba(14, 165, 233, 0.15)";
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, range * scale, startAngle, endAngle);
+      ctx.closePath();
+      ctx.fill();
+
+      // 扇区边界实线
+      ctx.strokeStyle = "#0284c7";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(endAngle) * (range * scale), cy + Math.sin(endAngle) * (range * scale));
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(startAngle) * (range * scale), cy + Math.sin(startAngle) * (range * scale));
+      ctx.stroke();
+
+      // 绘制菲涅尔透镜多通道切割线条 (Multi-zone optical beams)
+      ctx.strokeStyle = "rgba(14, 165, 233, 0.4)";
+      ctx.lineWidth = 1;
+      for (let a = -halfH; a <= halfH; a += (2 * halfH) / 12) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.sin(a) * (range * scale), cy + Math.cos(a) * (range * scale));
+        ctx.stroke();
+      }
+
+      // 角度标注弧线
+      ctx.strokeStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.arc(cx, cy, 60, startAngle, endAngle);
+      ctx.stroke();
+      ctx.fillStyle = "#38bdf8";
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(`水平覆盖角 100°`, cx, cy + 85);
+
+      // 传感器物理位置
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 11px sans-serif";
+      ctx.fillText("E53_IS1 (墙面)", cx, cy - 10);
+
+      // 老人俯视点
+      const hx = cx + humanPos.x * scale;
+      const hy = cy + humanPos.z * scale;
+      drawHumanTopDot(hx, hy);
+    }
+
+    // 绘制侧视图 (Side View - 盲区解析)
+    function drawSideView(w, h) {
+      const ox = w * 0.15;
+      const groundY = h * 0.82;
+      const scale = (w * 0.75) / range;
+      const sensorY = groundY - height * scale;
+
+      // 1. 地面实线
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(ox - 30, groundY);
+      ctx.lineTo(w - 20, groundY);
+      ctx.stroke();
+
+      // 墙壁实线
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+      ctx.beginPath();
+      ctx.moveTo(ox, groundY + 20);
+      ctx.lineTo(ox, groundY - 3.2 * scale);
+      ctx.stroke();
+
+      // 地面距离标尺
+      ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "center";
+      for (let r = 1; r <= Math.ceil(range); r++) {
+        const rx = ox + r * scale;
+        ctx.beginPath();
+        ctx.moveTo(rx, groundY);
+        ctx.lineTo(rx, groundY + 6);
+        ctx.stroke();
+        ctx.fillText(`${r}m`, rx, groundY + 18);
+      }
+
+      // 2. 垂直光束角度计算
+      const pitchRad = pitch * Math.PI / 180;
+      const halfVRad = (fovV / 2) * Math.PI / 180;
+      const topAngle = pitchRad - halfVRad; // 向上偏角
+      const bottomAngle = pitchRad + halfVRad; // 向下俯角
+
+      // 垂直最远端点与触地点
+      const maxDistX = ox + range * scale;
+      const topBeamY = sensorY + Math.tan(topAngle) * (range * scale);
+      
+      // 下盲区触地距离
+      const blindDist = Math.max(0.1, height / Math.tan(bottomAngle));
+      const blindGroundX = ox + blindDist * scale;
+
+      // 填充侧向有效感应扇区
+      ctx.fillStyle = "rgba(14, 165, 233, 0.18)";
+      ctx.beginPath();
+      ctx.moveTo(ox, sensorY);
+      ctx.lineTo(maxDistX, topBeamY);
+      ctx.lineTo(maxDistX, groundY);
+      ctx.lineTo(blindGroundX, groundY);
+      ctx.closePath();
+      ctx.fill();
+
+      // 下方红色盲区填充 (Dead Zone)
+      ctx.fillStyle = "rgba(239, 68, 68, 0.15)";
+      ctx.beginPath();
+      ctx.moveTo(ox, sensorY);
+      ctx.lineTo(blindGroundX, groundY);
+      ctx.lineTo(ox, groundY);
+      ctx.closePath();
+      ctx.fill();
+
+      // 光束边界线条
+      ctx.strokeStyle = "#0284c7";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(ox, sensorY);
+      ctx.lineTo(maxDistX, topBeamY);
+      ctx.moveTo(ox, sensorY);
+      ctx.lineTo(blindGroundX, groundY);
+      ctx.stroke();
+
+      // 标出盲区警告
+      ctx.strokeStyle = "#ef4444";
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(ox, groundY);
+      ctx.lineTo(blindGroundX, groundY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "#ef4444";
+      ctx.font = "bold 11px sans-serif";
+      ctx.fillText(`下方感应盲区 (${blindDist.toFixed(2)}m)`, ox + (blindGroundX - ox) / 2, groundY - 8);
+
+      // 绘制传感器本体与高度箭头
+      ctx.fillStyle = "#0284c7";
+      ctx.beginPath();
+      ctx.arc(ox, sensorY, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(ox - 15, groundY);
+      ctx.lineTo(ox - 15, sensorY);
+      ctx.stroke();
+      ctx.fillStyle = "#38bdf8";
+      ctx.font = "11px monospace";
+      ctx.textAlign = "right";
+      ctx.fillText(`H=${height.toFixed(1)}m`, ox - 20, sensorY + (groundY - sensorY) / 2);
+
+      // 侧视老人像
+      const humanX = ox + Math.hypot(humanPos.x, humanPos.z) * scale;
+      drawHumanSideFigure(humanX, groundY, scale);
+    }
+
+    // 绘制虚拟老人形象 (3D 透视)
+    function drawHumanAvatar(cx, cy, scale) {
+      const pFoot = project3D(humanPos.x, 0, humanPos.z, cx, cy, scale);
+      const pHip = project3D(humanPos.x, 0.8, humanPos.z, cx, cy, scale);
+      const pHead = project3D(humanPos.x, 1.6, humanPos.z, cx, cy, scale);
+
+      const color = isDetected ? "#22c55e" : "#94a3b8";
+
+      // 光环阴影
+      ctx.fillStyle = isDetected ? "rgba(34, 197, 94, 0.3)" : "rgba(255, 255, 255, 0.1)";
+      ctx.beginPath();
+      ctx.ellipse(pFoot.px, pFoot.py, 12, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 身体躯干骨架
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(pFoot.px, pFoot.py);
+      ctx.lineTo(pHip.px, pHip.py);
+      ctx.lineTo(pHead.px, pHead.py);
+      ctx.stroke();
+
+      // 头部
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(pHead.px, pHead.py - 6, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 标注
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(isDetected ? "老人 (被检测中)" : "老人 (未触发)", pHead.px, pHead.py - 18);
+    }
+
+    function drawHumanTopDot(hx, hy) {
+      const color = isDetected ? "#22c55e" : "#94a3b8";
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(isDetected ? "老人(触发)" : "老人", hx, hy - 12);
+    }
+
+    function drawHumanSideFigure(hx, groundY, scale) {
+      const headY = groundY - 1.6 * scale;
+      const color = isDetected ? "#22c55e" : "#94a3b8";
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(hx, groundY);
+      ctx.lineTo(hx, headY + 12);
+      ctx.stroke();
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(hx, headY, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(isDetected ? "老人(活动中)" : "老人", hx, headY - 10);
+    }
+
+    // 示波器波形模拟
+    function drawScope() {
+      const w = scopeCanvas.width / (window.devicePixelRatio || 1);
+      const h = scopeCanvas.height / (window.devicePixelRatio || 1);
+
+      scopeCtx.clearRect(0, 0, w, h);
+      scopeCtx.strokeStyle = isDetected ? "#22c55e" : "#0284c7";
+      scopeCtx.lineWidth = 1.5;
+
+      scopeCtx.beginPath();
+      const step = w / scopeData.length;
+      for (let i = 0; i < scopeData.length; i++) {
+        const val = scopeData[i];
+        const y = h / 2 - val * (h * 0.4);
+        if (i === 0) scopeCtx.moveTo(0, y);
+        else scopeCtx.lineTo(i * step, y);
+      }
+      scopeCtx.stroke();
+    }
+
+    // 动画主循环
+    function animate() {
+      if (isSimulating) {
+        // 沿 X 轴来回走动
+        humanPos.x += humanPos.vx;
+        if (humanPos.x > 3.2 || humanPos.x < -3.2) {
+          humanPos.vx = -humanPos.vx;
+        }
+
+        const wasDetected = isDetected;
+        isDetected = checkDetection();
+
+        // 状态更新与指示灯
+        const led = document.getElementById('sensor-led-indicator');
+        const stText = document.getElementById('sensor-status-text');
+        const badge = document.getElementById('trigger-badge');
+
+        if (isDetected) {
+          led.className = "w-3 h-3 rounded-full bg-emerald-500 shadow-md shadow-emerald-500/50";
+          stText.innerText = "检测到人体红外活动 (GPIO_7 = 1)";
+          badge.className = "px-2.5 py-1 rounded text-xs font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800";
+          badge.innerText = "HIGH (3.3V)";
+        } else {
+          led.className = "w-3 h-3 rounded-full bg-slate-500";
+          stText.innerText = "待机静默 (GPIO_7 = 0)";
+          badge.className = "px-2.5 py-1 rounded text-xs font-mono font-bold bg-slate-800 text-slate-400";
+          badge.innerText = "LOW (0V)";
+        }
+
+        // 生成波形数据
+        scopeData.shift();
+        if (isDetected) {
+          // 产生正弦交变差分电荷
+          scopeData.push(Math.sin(Date.now() * 0.015) * (0.6 + Math.random() * 0.3));
+        } else {
+          // 纯底噪
+          scopeData.push((Math.random() - 0.5) * 0.08);
+        }
+
+        draw();
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    // 初始化
+    window.onload = () => {
+      resizeCanvas();
+      updateParams();
+      animate();
+    };
+  </script>
+</body>
+</html>
