@@ -21,6 +21,7 @@ extern "C" {
 #define PIN_DOOR_REED           10   // 门磁干簧管 (GPIO_10: J1 第 1 孔 SPI_SCK，与烟雾 SF1 零冲突)
 #define PIN_KEY_SOS             11   // F1 紧急求助 (GPIO_11, 按下接地)
 #define PIN_KEY_RESET           12   // F2 复位按键 (GPIO_12, 按下接地)
+#define PIN_WIRELESS_SOS        14   // 433MHz 无线遥控求助按钮 (GPIO_14: J1 第 4 孔 GPIO1，按下闭合接地)
 #define PIN_LED_SYS             2    // 板载LED (GPIO_2)
 #define PIN_I2C1_SDA            0    // SHT30 SDA
 #define PIN_I2C1_SCL            1    // SHT30 SCL
@@ -68,8 +69,9 @@ typedef struct {
     uint8_t  door_open;                  // 1:开 0:关
     uint32_t door_open_duration_sec;     // 门已开秒数
 
-    // 求助按键
+    // 求助按键 (支持板载 F1 与 433MHz 无线遥控按钮)
     uint8_t  sos_active;                 // 1:求助中 0:正常
+    uint8_t  sos_source;                 // 0:无 1:板载按键 2:无线遥控按钮 3:远程下发
 
     // 温湿度
     float    temperature;                // 温度

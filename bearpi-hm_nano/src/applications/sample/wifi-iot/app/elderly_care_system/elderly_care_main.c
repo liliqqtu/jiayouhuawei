@@ -85,6 +85,7 @@ static void ElderlyCareTask(void *arg)
             g_care_data.door_open_duration_sec = SensorDoorGetOpenDuration();
 
             g_care_data.sos_active = EmergencySosIsActive();
+            g_care_data.sos_source = (uint8_t)EmergencySosGetSource();
             SensorEnvironmentRead(&g_care_data.temperature, &g_care_data.humidity);
             g_care_data.voice_volume = VoiceGetVolume();
 
@@ -166,7 +167,7 @@ static void ElderlyCareTask(void *arg)
             char telemetry_buf[256];
             snprintf(telemetry_buf, sizeof(telemetry_buf),
                      "{\"type\":\"telemetry\",\"deviceId\":\"bearpi-001\",\"uptime\":%u,\"motion\":%u,\"no_motion_sec\":%u,"
-                     "\"door\":%u,\"door_sec\":%u,\"temp\":%.1f,\"humi\":%.1f,\"sos\":%u,\"vol\":%u,"
+                     "\"door\":%u,\"door_sec\":%u,\"temp\":%.1f,\"humi\":%.1f,\"sos\":%u,\"sos_src\":%u,\"vol\":%u,"
                      "\"alert\":%u,\"level\":%u,\"count\":%u}",
                      g_care_data.uptime_seconds,
                      g_care_data.motion_active,
@@ -176,6 +177,7 @@ static void ElderlyCareTask(void *arg)
                      g_care_data.temperature,
                      g_care_data.humidity,
                      g_care_data.sos_active,
+                     (uint32_t)g_care_data.sos_source,
                      (uint32_t)g_care_data.voice_volume,
                      (uint32_t)g_care_data.current_alert,
                      (uint32_t)g_care_data.current_level,
