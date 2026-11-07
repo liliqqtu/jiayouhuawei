@@ -92,7 +92,8 @@ typedef struct {
 #define CFG_UDP_PORT                9999
 
 // 华为云 IoTDA (设备接入服务) 鉴权三元组
-#define CFG_OC_SERVER_IP            "121.36.42.100"
+#define CFG_OC_SERVER_IP            "117.78.5.125"
+#define CFG_OC_SERVER_DOMAIN        "c4d3a2eef8.st1.iotda-device.cn-north-4.myhuaweicloud.com"
 #define CFG_OC_SERVER_PORT          1883
 #define CFG_OC_CLIENT_ID            "6aedfdfe7f2e6c302faaed1e_ElderlyCare_001_0_0_2026110616"
 #define CFG_OC_USERNAME             "6aedfdfe7f2e6c302faaed1e_ElderlyCare_001"

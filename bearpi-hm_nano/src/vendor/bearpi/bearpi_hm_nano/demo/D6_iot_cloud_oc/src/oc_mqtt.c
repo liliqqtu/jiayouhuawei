@@ -106,6 +106,7 @@ static int oc_mqtt_entry(void)
     int rc = 0;
 
     NetworkInit(&n);
+    printf("[OC_MQTT] Target Server: %s:%d\n", OC_SERVER_IP, OC_SERVER_PORT);
     NetworkConnect(&n, OC_SERVER_IP, OC_SERVER_PORT);
 
     buf_size = OC_MQTT_BUF_SIZE;
@@ -130,6 +131,7 @@ static int oc_mqtt_entry(void)
     mq_client.defaultMessageHandler = mqtt_callback;
 
     rc = MQTTConnect(&mq_client, &data);
+    printf("[OC_MQTT] MQTTConnect returned: %d\n", rc);
 
     return rc;
 }
